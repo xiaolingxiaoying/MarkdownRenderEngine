@@ -21,14 +21,13 @@ mwrender document.md -o output.html
 * **`--theme <id>`**: 指定要使用的主题。引擎直接免安装内置了以下 7 款 GitHub 主题：
   * `github-light` (默认), `github-dark`, `github-auto` (自适应深浅)
   * `github-dark-dimmed`, `github-dark-high-contrast`, `github-dark-colorblind`, `github-light-colorblind`
-* **`--theme-dir <dir>`**: 指定引擎加载主题 CSS 样式的根目录。默认会去寻找 `themes/`。
+* **`--theme-path <dir>`**: 指定引擎加载主题 CSS 样式的根目录。
 * **`--html-policy <disabled|trusted|sanitized>`**: 
   * `trusted`: 允许 Markdown 内部直接写入原生 HTML 标签。
   * `disabled`: 将所有 HTML 标签当做纯文本显示 (即 escape)。
   * `sanitized`: 过滤危险的 HTML 标签，仅保留安全标签。
-  * `sanitize`: 对标签进行安全过滤（移除 `<script>` 等风险标签）。
-* **`--allow-document-css`**: 生成独立的完整 HTML 页面，包含 `<html>` 头部以及内联样式。开启此项后，生成的 HTML 才可以脱网独立使用。
-* **`--log-level <info|warning|error>`**: 控制终端报错的冗余程度。
+* **`--fragment`**: 仅输出文章片段 HTML，不包含完整的 `<html>` 和 `<head>`。
+* **`--allow-document-css`**: 允许读取 Front Matter 中引用的自定义 CSS 文件（默认禁用以防路径穿越）。
 
 ---
 

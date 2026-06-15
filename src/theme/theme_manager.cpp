@@ -9,8 +9,13 @@
 #include <system_error>
 #include <utility>
 
-#include <mwrender/builtin_theme.hpp>
-
+#include <mwrender/embed_github_auto_css.hpp>
+#include <mwrender/embed_github_dark_cb_css.hpp>
+#include <mwrender/embed_github_dark_css.hpp>
+#include <mwrender/embed_github_dark_dimmed_css.hpp>
+#include <mwrender/embed_github_dark_hc_css.hpp>
+#include <mwrender/embed_github_light_cb_css.hpp>
+#include <mwrender/embed_github_light_css.hpp>
 #include "support/json.hpp"
 
 namespace mwrender::detail {

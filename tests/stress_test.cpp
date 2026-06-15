@@ -373,6 +373,15 @@ void testNestingDepthLimit() {
 
     // Should render something (gracefully truncated or limited), not crash
     require(!result.html.empty(), "nesting depth limit: output should not be empty");
+    
+    bool hasDepthWarning = false;
+    for (const auto& diag : result.diagnostics) {
+        if (diag.code == "MW0004") {
+            hasDepthWarning = true;
+            break;
+        }
+    }
+    require(hasDepthWarning, "nesting depth limit: should produce MW0004 warning");
 }
 
 // ---------------------------------------------------------------------------

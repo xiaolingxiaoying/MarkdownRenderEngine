@@ -7,8 +7,10 @@
 #include <fstream>
 #include <sstream>
 
-#include <mwrender/builtin_resources.hpp>
-
+#include <mwrender/embed_highlight_css.hpp>
+#include <mwrender/embed_highlight_js.hpp>
+#include <mwrender/embed_mathjax_js.hpp>
+#include <mwrender/embed_mermaid_js.hpp>
 #include "support/document_text.hpp"
 
 namespace mwrender::detail {

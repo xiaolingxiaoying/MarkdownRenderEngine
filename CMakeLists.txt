@@ -16,31 +16,49 @@ option(MWRENDER_BUILD_TESTS "Build MWRender tests" ON)
 option(MWRENDER_ENABLE_YAML "Enable YAML front matter support" OFF)
 option(MWRENDER_ENABLE_SANITIZER "Enable an HTML sanitizer backend" OFF)
 
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/themes/github-light/content.css" MWRENDER_GITHUB_LIGHT_CSS)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark.css" MWRENDER_GITHUB_DARK_CSS)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark-dimmed.css" MWRENDER_GITHUB_DARK_DIMMED_CSS)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark-high-contrast.css" MWRENDER_GITHUB_DARK_HC_CSS)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark-colorblind.css" MWRENDER_GITHUB_DARK_CB_CSS)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-light-colorblind.css" MWRENDER_GITHUB_LIGHT_CB_CSS)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown.css" MWRENDER_GITHUB_AUTO_CSS)
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/builtin_theme.hpp.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/builtin_theme.hpp"
-    @ONLY
-)
+# Build embed tool
+add_executable(mwrender_embed tools/embed.cpp)
 
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/js/highlight.min.js" MWRENDER_HIGHLIGHT_JS)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/css/github.min.css" MWRENDER_GITHUB_CSS)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/js/mathjax-tex-svg.js" MWRENDER_MATHJAX_JS)
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/js/mermaid.min.js" MWRENDER_MERMAID_JS)
+# Helper function to embed a file
+function(embed_file input_file variable_name output_file)
+    add_custom_command(
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/${output_file}"
+        COMMAND mwrender_embed "${input_file}" "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/${output_file}" "${variable_name}"
+        DEPENDS "${input_file}" mwrender_embed
+        COMMENT "Embedding ${input_file} into ${output_file}"
+        VERBATIM
+    )
+endfunction()
 
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/builtin_resources.hpp.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/builtin_resources.hpp"
-    @ONLY
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/themes/github-light/content.css" githubLightCss embed_github_light_css.hpp)
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark.css" githubDarkCss embed_github_dark_css.hpp)
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark-dimmed.css" githubDarkDimmedCss embed_github_dark_dimmed_css.hpp)
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark-high-contrast.css" githubDarkHcCss embed_github_dark_hc_css.hpp)
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark-colorblind.css" githubDarkCbCss embed_github_dark_cb_css.hpp)
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-light-colorblind.css" githubLightCbCss embed_github_light_cb_css.hpp)
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown.css" githubAutoCss embed_github_auto_css.hpp)
+
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/resources/js/highlight.min.js" highlightJs embed_highlight_js.hpp)
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/resources/css/github.min.css" highlightCss embed_highlight_css.hpp)
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/resources/js/mathjax-tex-svg.js" mathjaxJs embed_mathjax_js.hpp)
+embed_file("${CMAKE_CURRENT_SOURCE_DIR}/resources/js/mermaid.min.js" mermaidJs embed_mermaid_js.hpp)
+
+set(MWRENDER_EMBEDDED_HEADERS
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_github_light_css.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_github_dark_css.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_github_dark_dimmed_css.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_github_dark_hc_css.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_github_dark_cb_css.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_github_light_cb_css.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_github_auto_css.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_highlight_js.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_highlight_css.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_mathjax_js.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/embed_mermaid_js.hpp"
 )
 
 add_library(mwrender_core
+    ${MWRENDER_EMBEDDED_HEADERS}
     src/analysis/document_analysis.cpp
     src/engine.cpp
     src/parser/parser.cpp

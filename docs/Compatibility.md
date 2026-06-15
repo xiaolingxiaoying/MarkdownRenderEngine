@@ -117,9 +117,6 @@ Run `mwrender_conformance_tests` to reproduce these results.
 | Footnotes | – | Planned for v0.3 |
 | Custom containers / Callout | – | Planned for v0.3 |
 | Bare URL autolinking | GFM §6.9 | Angle bracket form only |
-| Math / MathJax / KaTeX | – | Out of scope |
-| Mermaid diagrams | – | Out of scope |
-| Syntax highlighting | – | Language class emitted; host integration required |
 
 ## Performance Baseline (v0.1, Release Build)
 
