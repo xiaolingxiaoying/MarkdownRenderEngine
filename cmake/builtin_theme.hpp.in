@@ -1,0 +1,12 @@
+#pragma once
+
+#include <string_view>
+
+namespace mwrender::detail {
+
+inline constexpr std::string_view githubLightCss = R"MWRENDER_CSS(
+@MWRENDER_GITHUB_LIGHT_CSS@
+)MWRENDER_CSS";
+
+} // namespace mwrender::detail
+

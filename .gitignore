@@ -1,0 +1,9 @@
+/build/
+/out/
+/.cache/
+/.codegraph/
+*.user
+*.suo
+*.pdb
+*.ilk
+

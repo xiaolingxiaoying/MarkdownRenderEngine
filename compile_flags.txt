@@ -1,0 +1,10 @@
+-std=gnu++20
+-Iinclude
+-Isrc
+-DMWRENDER_VERSION_MAJOR=0
+-DMWRENDER_VERSION_MINOR=1
+-DMWRENDER_VERSION_PATCH=0
+-Wall
+-Wextra
+-Wpedantic
+

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "github-light",
+  "name": "GitHub Light",
+  "version": "5.9.0",
+  "appearance": "light",
+  "author": "Sindre Sorhus / MWRender",
+  "description": "GitHub-like Markdown styling based on github-markdown-css.",
+  "entry": {
+    "content": "content.css"
+  },
+  "variables": {}
+}
+

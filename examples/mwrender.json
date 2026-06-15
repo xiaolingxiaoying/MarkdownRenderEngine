@@ -1,0 +1,23 @@
+{
+  "theme": "github-light",
+  "output": {
+    "mode": "full-document",
+    "language": "en",
+    "includeCss": true
+  },
+  "html": {
+    "enabled": true,
+    "policy": "disabled"
+  },
+  "css": {
+    "enabled": true,
+    "allowRemoteUrl": false,
+    "files": [
+      "custom.css"
+    ]
+  },
+  "sourceMap": {
+    "enabled": true
+  }
+}
+

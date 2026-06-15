@@ -1,0 +1,45 @@
+{
+  "clangd.path": "C:/Program Files/clangd/bin/clangd.exe",
+  "clangd.arguments": [
+    "--query-driver=C:/Program Files/mingw64/bin/g++.exe",
+    "--background-index",
+    "--clang-tidy",
+    "--completion-style=detailed",
+    "--header-insertion=iwyu"
+  ],
+  "clangd.checkUpdates": true,
+  "clangd.onConfigChanged": "restart",
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "C_Cpp.errorSquiggles": "disabled",
+  "cmake.useCMakePresets": "always",
+  "cmake.configurePreset": "clangd",
+  "cmake.buildPreset": "clangd",
+  "cmake.testPreset": "clangd",
+  "cmake.configureOnOpen": true,
+  "cmake.options.statusBarVisibility": "visible",
+  "files.associations": {
+    "*.hpp": "cpp"
+  },
+  "files.exclude": {
+    "**/.codegraph": true,
+    "**/build": true,
+    "**/out": true
+  },
+  "search.exclude": {
+    "**/.codegraph": true,
+    "**/build": true,
+    "**/out": true
+  },
+  "[cpp]": {
+    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "editor.formatOnSave": false,
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+  "[cmake]": {
+    "editor.formatOnSave": false
+  },
+  "editor.inlayHints.enabled": "on"
+}

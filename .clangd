@@ -1,0 +1,31 @@
+CompileFlags:
+  CompilationDatabase: build/clangd
+  Compiler: C:/Program Files/mingw64/bin/g++.exe
+  Add:
+    - -Wall
+    - -Wextra
+    - -Wpedantic
+  Remove:
+    - -fdiagnostics-color=*
+
+Diagnostics:
+  UnusedIncludes: Strict
+  MissingIncludes: Strict
+  ClangTidy:
+    Add:
+      - bugprone-*
+      - performance-*
+      - portability-*
+    Remove:
+      - bugprone-easily-swappable-parameters
+
+Index:
+  Background: Build
+
+InlayHints:
+  Enabled: true
+  ParameterNames: true
+  DeducedTypes: true
+
+Hover:
+  ShowAKA: true
