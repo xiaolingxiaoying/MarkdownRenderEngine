@@ -108,9 +108,29 @@ void testDeepBlockquoteNesting() {
     request.options.outputMode = mwrender::OutputMode::Fragment;
     const auto result = engine.render(request);
 
-    // Engine has maxNestingDepth=256 by default; should succeed or gracefully truncate
-    require(result.ok || !result.ok, "deep nesting should not crash (ok or truncated)");
-    require(!result.html.empty(), "deep nesting should produce some output");
+    // 200 levels is under the default maxNestingDepth of 256
+    require(result.ok, "deep nesting under limit should succeed");
+    require(result.diagnostics.empty(), "deep nesting under limit should not produce diagnostics");
+
+    // Exceed maxNestingDepth
+    std::string overflowMarkdown;
+    for (int level = 0; level < 300; ++level) {
+        overflowMarkdown += "> ";
+    }
+    overflowMarkdown += "overflow\n";
+
+    request.markdown = overflowMarkdown;
+    const auto overflowResult = engine.render(request);
+    
+    require(overflowResult.ok, "nesting over limit should not crash");
+    bool hasDepthWarning = false;
+    for (const auto& diag : overflowResult.diagnostics) {
+        if (diag.code == "MW0004") { // MW0004 is maximum nesting depth exceeded
+            hasDepthWarning = true;
+            break;
+        }
+    }
+    require(hasDepthWarning, "nesting over limit should produce MW0004 warning");
 }
 
 // ---------------------------------------------------------------------------

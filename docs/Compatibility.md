@@ -41,6 +41,9 @@ CommonMark conformance.
 | Fragment output | Supported |
 | Full HTML5 document | Supported |
 | GitHub Light theme | Embedded and supported |
+| MathJax Offline | Embedded and supported |
+| Mermaid Offline | Embedded and supported |
+| Highlight.js Offline | Embedded and supported |
 | External theme packages | Supported with schema validation |
 | Request CSS | Supported |
 | Front Matter CSS | Opt-in |
