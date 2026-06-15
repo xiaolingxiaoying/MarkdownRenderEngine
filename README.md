@@ -26,9 +26,9 @@ cmake --build build --config Release
 
 ### 渲染您的第一篇文档
 编译完成后，您可以直接在命令行中使用 `mwrender` 渲染任意 markdown 文件。
-为了生成带有默认亮色主题的独立 HTML：
+为了生成带有自适应系统深浅色主题的独立 HTML：
 ```bash
-./build/release/mwrender.exe my_doc.md -o my_doc.html --allow-document-css
+./build/release/mwrender.exe my_doc.md -o my_doc.html --theme github-auto --allow-document-css
 ```
 双击打开生成的 `my_doc.html`，享受极其顺滑的离线阅读体验！
 

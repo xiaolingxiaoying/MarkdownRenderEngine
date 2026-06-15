@@ -16,10 +16,13 @@ option(MWRENDER_BUILD_TESTS "Build MWRender tests" ON)
 option(MWRENDER_ENABLE_YAML "Enable YAML front matter support" OFF)
 option(MWRENDER_ENABLE_SANITIZER "Enable an HTML sanitizer backend" OFF)
 
-file(READ
-    "${CMAKE_CURRENT_SOURCE_DIR}/themes/github-light/content.css"
-    MWRENDER_GITHUB_LIGHT_CSS
-)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/themes/github-light/content.css" MWRENDER_GITHUB_LIGHT_CSS)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark.css" MWRENDER_GITHUB_DARK_CSS)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark-dimmed.css" MWRENDER_GITHUB_DARK_DIMMED_CSS)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark-high-contrast.css" MWRENDER_GITHUB_DARK_HC_CSS)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-dark-colorblind.css" MWRENDER_GITHUB_DARK_CB_CSS)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown-light-colorblind.css" MWRENDER_GITHUB_LIGHT_CB_CSS)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/source/github-markdown-css-main/github-markdown.css" MWRENDER_GITHUB_AUTO_CSS)
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/builtin_theme.hpp.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/builtin_theme.hpp"

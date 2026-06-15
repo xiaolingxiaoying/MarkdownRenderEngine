@@ -229,15 +229,13 @@ void ThemeManager::addRoot(std::filesystem::path path, ThemeOrigin origin) {
 
 std::vector<ThemeInfo> ThemeManager::listThemes() const {
     std::vector<ThemeInfo> themes{
-        {
-            "github-light",
-            "GitHub Light",
-            "5.9.0",
-            "light",
-            ThemeOrigin::BuiltIn,
-            {},
-            true,
-        },
+        {"github-light", "GitHub Light", "5.9.0", "light", ThemeOrigin::BuiltIn, {}, true},
+        {"github-dark", "GitHub Dark", "5.9.0", "dark", ThemeOrigin::BuiltIn, {}, true},
+        {"github-dark-dimmed", "GitHub Dark Dimmed", "5.9.0", "dark", ThemeOrigin::BuiltIn, {}, true},
+        {"github-dark-high-contrast", "GitHub Dark High Contrast", "5.9.0", "dark", ThemeOrigin::BuiltIn, {}, true},
+        {"github-dark-colorblind", "GitHub Dark Colorblind", "5.9.0", "dark", ThemeOrigin::BuiltIn, {}, true},
+        {"github-light-colorblind", "GitHub Light Colorblind", "5.9.0", "light", ThemeOrigin::BuiltIn, {}, true},
+        {"github-auto", "GitHub Auto (System Preference)", "5.9.0", "auto", ThemeOrigin::BuiltIn, {}, true},
     };
 
     for (const auto& root : roots_) {
@@ -327,10 +325,25 @@ ThemeResolution ThemeManager::resolve(
     }
 
     if (themeId == "github-light") {
-        resolution.ok = true;
-        resolution.id = "github-light";
-        resolution.css = githubLightCss;
-        return resolution;
+        resolution.ok = true; resolution.id = "github-light"; resolution.css = githubLightCss; return resolution;
+    }
+    if (themeId == "github-dark") {
+        resolution.ok = true; resolution.id = "github-dark"; resolution.css = githubDarkCss; return resolution;
+    }
+    if (themeId == "github-dark-dimmed") {
+        resolution.ok = true; resolution.id = "github-dark-dimmed"; resolution.css = githubDarkDimmedCss; return resolution;
+    }
+    if (themeId == "github-dark-high-contrast") {
+        resolution.ok = true; resolution.id = "github-dark-high-contrast"; resolution.css = githubDarkHcCss; return resolution;
+    }
+    if (themeId == "github-dark-colorblind") {
+        resolution.ok = true; resolution.id = "github-dark-colorblind"; resolution.css = githubDarkCbCss; return resolution;
+    }
+    if (themeId == "github-light-colorblind") {
+        resolution.ok = true; resolution.id = "github-light-colorblind"; resolution.css = githubLightCbCss; return resolution;
+    }
+    if (themeId == "github-auto") {
+        resolution.ok = true; resolution.id = "github-auto"; resolution.css = githubAutoCss; return resolution;
     }
 
     resolution.diagnostics.push_back({

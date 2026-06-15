@@ -4,8 +4,32 @@
 
 namespace mwrender::detail {
 
-inline constexpr std::string_view githubLightCss = R"MWRENDER_CSS(
+inline const std::string_view githubLightCss = R"MWRENDER_CSS(
 @MWRENDER_GITHUB_LIGHT_CSS@
+)MWRENDER_CSS";
+
+inline const std::string_view githubDarkCss = R"MWRENDER_CSS(
+@MWRENDER_GITHUB_DARK_CSS@
+)MWRENDER_CSS";
+
+inline const std::string_view githubDarkDimmedCss = R"MWRENDER_CSS(
+@MWRENDER_GITHUB_DARK_DIMMED_CSS@
+)MWRENDER_CSS";
+
+inline const std::string_view githubDarkHcCss = R"MWRENDER_CSS(
+@MWRENDER_GITHUB_DARK_HC_CSS@
+)MWRENDER_CSS";
+
+inline const std::string_view githubDarkCbCss = R"MWRENDER_CSS(
+@MWRENDER_GITHUB_DARK_CB_CSS@
+)MWRENDER_CSS";
+
+inline const std::string_view githubLightCbCss = R"MWRENDER_CSS(
+@MWRENDER_GITHUB_LIGHT_CB_CSS@
+)MWRENDER_CSS";
+
+inline const std::string_view githubAutoCss = R"MWRENDER_CSS(
+@MWRENDER_GITHUB_AUTO_CSS@
 )MWRENDER_CSS";
 
 } // namespace mwrender::detail

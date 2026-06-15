@@ -281,8 +281,8 @@ void testFrontMatterAndExternalTheme() {
     engine.addThemeRoot(root / "themes");
     const auto themes = engine.listThemes();
     require(
-        themes.size() == 2,
-        "valid external theme should be discoverable");
+        themes.size() == 8,
+        "valid external theme should be discoverable alongside 7 builtin themes");
     require(
         themes.back().name == "\xF0\x9F\x92\xA1 Custom Light",
         "JSON unicode surrogate pairs should decode as UTF-8");
