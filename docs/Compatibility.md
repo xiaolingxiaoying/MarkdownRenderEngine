@@ -138,10 +138,10 @@ From `mwrender_benchmark` on the development machine (exact values vary):
 - GFM bare URL autolinking without angle brackets is not yet implemented.
 - Front Matter is a deliberately restricted YAML-like subset.
 - No built-in sanitizer backend is bundled; applications inject one.
-- Footnotes, definition lists, math, Mermaid and custom containers are not yet
-  implemented.
-- There is no syntax-highlighting backend; language classes are emitted for
-  host integration.
+- Footnotes, definition lists and custom containers are not yet
+  implemented (Math and Mermaid are fully supported and embedded as offline runtimes in full HTML mode).
+- Syntax highlighting is supported (Highlight.js is embedded in full HTML mode). In fragment mode, language classes are emitted for host integration.
+
 
 These limitations are explicit compatibility boundaries, not silent claims of
 full CommonMark/GFM compliance.
