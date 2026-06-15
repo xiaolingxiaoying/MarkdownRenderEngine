@@ -7,6 +7,8 @@
 #include <fstream>
 #include <sstream>
 
+#include <mwrender/builtin_resources.hpp>
+
 #include "support/document_text.hpp"
 
 namespace mwrender::detail {
@@ -425,7 +427,7 @@ private:
             });
         output += ordered ? "<ol class=\"mw-list" : "<ul class=\"mw-list";
         if (taskList) {
-            output += " contains-task-list";
+            output += " mw-task-list";
         }
         output += '"';
         if (ordered && data->start != 1) {
@@ -726,17 +728,8 @@ std::string assembleDocument(
     html += "</head>\n<body style=\"background-color: var(--color-canvas-default, #fff);\">\n";
     html += fragment;
 
-    auto loadFile = [](const std::string& path) -> std::string {
-        std::ifstream file(path);
-        if (!file.is_open()) return "";
-        std::stringstream ss;
-        ss << file.rdbuf();
-        return ss.str();
-    };
-
     if (options.extensions.latexMath) {
-        std::string mathjax = loadFile("resources/js/mathjax-tex-svg.js");
-        if (!mathjax.empty()) {
+        if (!mathjaxJs.empty()) {
             html += "<script>\n";
             html += "window.MathJax = {\n";
             html += "  tex: {\n";
@@ -746,24 +739,21 @@ std::string assembleDocument(
             html += "  svg: { fontCache: 'global' }\n";
             html += "};\n";
             html += "</script>\n";
-            html += "<script>\n" + mathjax + "\n</script>\n";
+            html += "<script>\n" + std::string(mathjaxJs) + "\n</script>\n";
         }
     }
 
     if (options.extensions.mermaid) {
-        std::string mermaid = loadFile("resources/js/mermaid.min.js");
-        if (!mermaid.empty()) {
-            html += "<script>\n" + mermaid + "\n</script>\n";
+        if (!mermaidJs.empty()) {
+            html += "<script>\n" + std::string(mermaidJs) + "\n</script>\n";
             html += "<script>mermaid.initialize({startOnLoad:true});</script>\n";
         }
     }
 
     if (options.extensions.highlight) {
-        std::string hljs = loadFile("resources/js/highlight.min.js");
-        std::string hljsCss = loadFile("resources/css/github.min.css");
-        if (!hljs.empty() && !hljsCss.empty()) {
-            html += "<style>\n" + hljsCss + "\n</style>\n";
-            html += "<script>\n" + hljs + "\n</script>\n";
+        if (!highlightJs.empty() && !highlightCss.empty()) {
+            html += "<style>\n" + std::string(highlightCss) + "\n</style>\n";
+            html += "<script>\n" + std::string(highlightJs) + "\n</script>\n";
             html += "<script>hljs.highlightAll();</script>\n";
         }
     }

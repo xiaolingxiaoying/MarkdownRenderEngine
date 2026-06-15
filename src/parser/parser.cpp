@@ -856,9 +856,22 @@ std::unique_ptr<Node> makeDocument(
     std::vector<Diagnostic>& diagnostics,
     DocumentMetadata& metadata,
     const MarkdownExtensions& extensions,
+    std::size_t maxNestingDepth,
+    std::size_t currentDepth = 0,
     bool isRoot = true) {
     auto document = std::make_unique<Node>();
     document->type = NodeType::Document;
+
+    if (currentDepth > maxNestingDepth) {
+        document->range = makeRange(0, 1, 1, 0, 1, 1);
+        diagnostics.push_back({
+            DiagnosticSeverity::Warning,
+            "MW0004",
+            "Maximum nesting depth exceeded.",
+            document->range
+        });
+        return document;
+    }
     if (!lines.empty()) {
         document->range = makeRange(
             0,
@@ -1182,7 +1195,7 @@ std::unique_ptr<Node> makeDocument(
                 static_cast<std::uint32_t>(last.text.size() + 1));
             node->literal = std::string(trimRight(content));
             auto innerLines = scanLines(node->literal);
-            auto innerDoc = makeDocument(node->literal, innerLines, diagnostics, metadata, extensions, false);
+            auto innerDoc = makeDocument(node->literal, innerLines, diagnostics, metadata, extensions, maxNestingDepth, currentDepth + 1, false);
             for (auto& child : innerDoc->children) {
                 node->children.push_back(std::move(child));
             }
@@ -1417,7 +1430,10 @@ ParseResult Parser::parse(
         lines,
         result.diagnostics,
         result.metadata,
-        parseOptions.extensions);
+        parseOptions.extensions,
+        options_.maxNestingDepth,
+        0,
+        true);
     result.ok = true;
     return result;
 }

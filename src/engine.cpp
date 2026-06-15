@@ -21,10 +21,50 @@ namespace {
 bool containsRemoteCssResource(std::string_view css) {
     std::string normalized;
     normalized.reserve(css.size());
-    for (const auto character : css) {
-        const auto byte = static_cast<unsigned char>(character);
-        if (std::isspace(byte) == 0) {
-            normalized += static_cast<char>(std::tolower(byte));
+    bool inComment = false;
+    for (size_t i = 0; i < css.size(); ++i) {
+        if (!inComment && i + 1 < css.size() && css[i] == '/' && css[i+1] == '*') {
+            inComment = true;
+            ++i;
+            continue;
+        }
+        if (inComment && i + 1 < css.size() && css[i] == '*' && css[i+1] == '/') {
+            inComment = false;
+            ++i;
+            continue;
+        }
+        if (inComment) continue;
+
+        if (css[i] == '\\' && i + 1 < css.size()) {
+            size_t start = i + 1;
+            size_t end = start;
+            while (end < css.size() && end - start < 6 && std::isxdigit(static_cast<unsigned char>(css[end]))) {
+                ++end;
+            }
+            if (end > start) {
+                std::string hexStr(css.substr(start, end - start));
+                try {
+                    int codePoint = std::stoi(hexStr, nullptr, 16);
+                    if (codePoint > 0 && codePoint < 128 && std::isspace(codePoint) == 0) {
+                        normalized += static_cast<char>(std::tolower(codePoint));
+                    }
+                } catch (...) {}
+                i = end - 1;
+                if (i + 1 < css.size() && (css[i + 1] == ' ' || css[i + 1] == '\t' || css[i + 1] == '\n' || css[i + 1] == '\r' || css[i + 1] == '\f')) {
+                    ++i;
+                }
+            } else {
+                ++i;
+                const auto byte = static_cast<unsigned char>(css[i]);
+                if (std::isspace(byte) == 0) {
+                    normalized += static_cast<char>(std::tolower(byte));
+                }
+            }
+        } else {
+            const auto byte = static_cast<unsigned char>(css[i]);
+            if (std::isspace(byte) == 0) {
+                normalized += static_cast<char>(std::tolower(byte));
+            }
         }
     }
     return normalized.find("@import") != std::string::npos ||

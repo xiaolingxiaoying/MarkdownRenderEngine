@@ -1,0 +1,23 @@
+#pragma once
+
+#include <string_view>
+
+namespace mwrender::detail {
+
+inline const std::string_view highlightJs = R"MWRENDER_RES(
+@MWRENDER_HIGHLIGHT_JS@
+)MWRENDER_RES";
+
+inline const std::string_view highlightCss = R"MWRENDER_RES(
+@MWRENDER_GITHUB_CSS@
+)MWRENDER_RES";
+
+inline const std::string_view mathjaxJs = R"MWRENDER_RES(
+@MWRENDER_MATHJAX_JS@
+)MWRENDER_RES";
+
+inline const std::string_view mermaidJs = R"MWRENDER_RES(
+@MWRENDER_MERMAID_JS@
+)MWRENDER_RES";
+
+} // namespace mwrender::detail

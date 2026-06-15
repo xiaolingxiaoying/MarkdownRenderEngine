@@ -26,6 +26,17 @@ configure_file(
     @ONLY
 )
 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/js/highlight.min.js" MWRENDER_HIGHLIGHT_JS)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/css/github.min.css" MWRENDER_GITHUB_CSS)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/js/mathjax-tex-svg.js" MWRENDER_MATHJAX_JS)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/resources/js/mermaid.min.js" MWRENDER_MERMAID_JS)
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/builtin_resources.hpp.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/builtin_resources.hpp"
+    @ONLY
+)
+
 add_library(mwrender_core
     src/analysis/document_analysis.cpp
     src/engine.cpp
