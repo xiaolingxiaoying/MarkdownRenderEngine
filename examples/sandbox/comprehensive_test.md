@@ -181,4 +181,78 @@ int main() {
 
 > [!CAUTION]
 >
-> 
+> 这是最新的危险警告框支持！
+
+## 5. LaTeX 数学公式与 Mermaid 离线图表
+
+### 5.1 LaTeX 行内公式
+爱因斯坦的质能方程是 $E = mc^2$。它展示了质量与能量的相互转换关系。行内公式应该完美融入段落。
+
+### 5.2 LaTeX 块级公式
+以下是一个复杂的矩阵乘法块级公式：
+$$
+\begin{bmatrix}
+1 & 2 & 3 \\
+4 & 5 & 6 \\
+7 & 8 & 9
+\end{bmatrix}
+\times
+\begin{bmatrix}
+x \\
+y \\
+z
+\end{bmatrix}
+=
+\begin{bmatrix}
+1x + 2y + 3z \\
+4x + 5y + 6z \\
+7x + 8y + 9z
+\end{bmatrix}
+$$
+它应该独占多行并且居中显示。
+
+### 5.3 Mermaid 流程图
+```mermaid
+graph TD
+    A[Hard] -->|Text| B(Round)
+    B --> C{Decision}
+    C -->|One| D[Result 1]
+    C -->|Two| E[Result 2]
+```
+以上流程图应该通过内联的 Mermaid 引擎自动渲染出来，无需联网。
+
+## 6. MWRender 1.0 终极特性测试
+
+### 6.1 离线代码高亮 (Syntax Highlighting)
+使用 Highlight.js 渲染 C++ 代码：
+```cpp
+#include <iostream>
+#include <string>
+
+int main() {
+    std::string msg = "Hello, Offline Highlighting!";
+    std::cout << msg << std::endl;
+    return 0;
+}
+```
+
+### 6.2 自动生成目录 [TOC]
+在文章的任意位置输入 `[TOC]` 即可生成全篇目录树。
+[TOC]
+
+### 6.3 学术级脚注 (Footnotes)
+这里有一段需要解释的文字[^1]。这也是一段需要引用的内容[^2]。
+
+[^1]: 这是第一个脚注的详细内容。它会被统一收集在文章的最末尾，并带有返回文章的跳转链接。
+[^2]: MWRender 是最强的脱机 Markdown 渲染器！
+
+### 6.4 图片完美对齐 (Image Alignment)
+
+原生 Markdown 不支持对齐，但我们支持！下面是一张居中的图片：
+![居中测试](image.png#center)
+
+下面是一张靠右浮动的图片，文字会自动环绕：
+![靠右浮动](image.png#right)
+只要加上 `#right` 后缀，图片就会自动右对齐。
+
+

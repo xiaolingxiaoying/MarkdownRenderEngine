@@ -10,7 +10,7 @@
 
 namespace mwrender {
 
-enum class NodeType {
+enum class NodeType : std::uint8_t {
     Document,
     FrontMatter,
     Heading,
@@ -35,6 +35,11 @@ enum class NodeType {
     Image,
     HtmlInline,
     AutoLink,
+    MathBlock,
+    MathInline,
+    Toc,
+    FootnoteRef,
+    FootnoteDef,
     SoftBreak,
     HardBreak
 };
@@ -78,6 +83,10 @@ struct TableCellData {
     bool header = false;
 };
 
+struct FootnoteData {
+    std::string id;
+};
+
 using NodePayload = std::variant<
     std::monostate,
     HeadingData,
@@ -87,7 +96,8 @@ using NodePayload = std::variant<
     LinkData,
     ImageData,
     HtmlData,
-    TableCellData>;
+    TableCellData,
+    FootnoteData>;
 
 struct Node {
     NodeType type = NodeType::Document;

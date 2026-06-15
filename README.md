@@ -1,166 +1,57 @@
-# MWRender
+# MWRender - High-Performance Markdown Engine
 
-MWRender 是一个轻量级、安全、高性能的 C++20 Markdown 渲染引擎。它完全不依赖 Qt 或浏览器内核，只需标准库即可将 Markdown 解析为安全的 HTML5 文档或片段，并提供完善的 CSS 主题扩展与自定义选项。
+**MWRender** 是一个采用纯 C++ 编写的、超高性能的零依赖 Markdown 渲染引擎。
+它能将 Markdown 文件直接解析为具有精美排版和交互能力的独立 HTML 文件（Zero-Dependency Offline HTML），特别适合用于构建极速博客、文档网站生成器或内嵌于其他 C++ 项目中。
 
-## ✨ 特性 (Features)
+## 🚀 核心特性
 
-* **纯净内核**：采用纯 C++20 编写，无冗余第三方依赖（不包含 DOM 树引擎或 JS 运行时）。
-* **标准兼容**：支持核心的 CommonMark 语法（标题、段落、引用、列表、代码块等），以及扩展的 **GFM** 语法（表格、任务列表、删除线、自动链接）。
-* **极速渲染**：1MB 文档解析+渲染耗时不到 20 毫秒（吞吐量 >50MB/s）。
-* **极高安全性**：
-  * 默认 `Disabled` 的 HTML 策略（拦截所有原生 HTML 节点注入）。
-  * 默认拦截危险的 `javascript:`、`vbscript:` 和 `data:` URL（防御混淆和大小写攻击）。
-  * 拦截危险的 CSS 路径穿越与远程资源加载（`@import` 与外部 `url()`）。
-* **现代主题系统**：自带基于 `github-markdown-css` 的 `github-light` 浅色主题，并支持以外部 JSON 声明挂载自定义的本地主题包。
-* **双模访问**：同时提供现代化的 C++ `Engine` API 接口与随时可用的 `mwrender` 命令行（CLI）工具。
-* **AST 与元数据**：支持生成完整的源码行号映射（source map）属性，并提供带有 `title`、`theme` 等元数据配置的 `Front Matter` 解析。
+- **极致性能**：采用纯 C++ 手写的递归下降抽象语法树 (AST) 解析器。单线程吞吐量高达 **~70MB/s**（解析 1MB 的超长纯文本仅需 ~13 毫秒）。
+- **零依赖脱机渲染**：MWRender 的「FullDocument」模式会将所有外部资源（包括主题 CSS、脚本）全部打包进单一的 HTML 文件中，做到**断网秒开**。
+- **高级企业级特性**：
+  - 🎨 **主题与样式自定义**：原生支持 FrontMatter 和灵活的自定义主题。
+  - 📊 **Mermaid 离线渲染**：无需联网，原生支持在代码块中渲染复杂的流程图。
+  - 🧮 **MathJax 离线公式**：内置本地化 MathJax SVG 引擎，完美支持 `$` 与 `$$` 的 LaTeX 渲染。
+  - 💻 **Highlight.js 代码高亮**：C++, Python, JS 等语言在离线状态下依然拥有 GitHub 风格着色。
+  - 📖 **智能辅助排版**：一键 `[TOC]` 自动提取全篇目录树、支持学术级脚注 `[^1]`、独创的 URL 后缀语法实现图片居中与浮动。
+  - 🔔 **GitHub 风格提示框**：原生支持 `> [!NOTE]` 等多种精美警告/提示块，内置高质量 SVG 图标。
 
----
+## 📥 快速开始 (Quick Start)
 
-## 🚀 快速开始 (Quick Start)
-
-### 命令行工具 (CLI)
-
-MWRender 提供了一个好用的命令行工具，编译后可直接在终端使用。
-
+### 编译项目
+使用 CMake 和您喜欢的编译器进行编译：
 ```bash
-# 基本用法：将 Markdown 渲染为 HTML (输出完整的 HTML5 文档)
-mwrender input.md -o output.html
-
-# 仅输出 HTML 片段（不带 <html> <body> 包装），适合嵌入
-mwrender input.md --fragment -o snippet.html
-
-# 切换为其他已加载的主题（自带 github-light）
-mwrender input.md --theme github-light
-
-# 附加自定义的本地 CSS 样式
-mwrender input.md --css custom.css
-
-# 开启受信任模式（允许解析输入文本中原生的 HTML 标签，请确保输入可信！）
-mwrender input.md --html-policy trusted
-
-# 列出目前所有可用的主题
-mwrender --list-themes
-
-# 打印生成的 AST 语法树结构供调试用
-mwrender input.md --dump-ast
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
 ```
 
-你可以通过 `mwrender --help` 查看所有的可用选项与高级配置（例如指定配置文件 `--config` 等）。
-
-### C++ API 调用 (Library)
-
-在 C++ 项目中消费 MWRender 非常简单：
-
-```cpp
-#include <iostream>
-#include <mwrender/engine.hpp>
-
-int main() {
-    const std::string markdown = "# Hello MWRender\n\nThis is a **bold** attempt.";
-
-    // 1. 初始化引擎
-    mwrender::Engine engine;
-    
-    // 2. 构造渲染请求
-    mwrender::RenderRequest request;
-    request.markdown = markdown;
-    request.options.outputMode = mwrender::OutputMode::Fragment; // 仅输出片段
-    // request.options.htmlPolicy = mwrender::HtmlPolicy::Trusted; // 根据需要可开启
-
-    // 3. 执行渲染
-    auto result = engine.render(request);
-    if (!result.ok) {
-        std::cerr << "Render failed!\n";
-        return 1;
-    }
-
-    // 4. 获取输出
-    std::cout << result.html << "\n";
-    return 0;
-}
+### 渲染您的第一篇文档
+编译完成后，您可以直接在命令行中使用 `mwrender` 渲染任意 markdown 文件。
+为了生成带有默认亮色主题的独立 HTML：
+```bash
+./build/release/mwrender.exe my_doc.md -o my_doc.html --allow-document-css
 ```
+双击打开生成的 `my_doc.html`，享受极其顺滑的离线阅读体验！
+
+## 📚 详细文档体系
+
+为了满足不同的使用场景，我们提供了详细的文档拆分：
+
+- 🛠 **用户使用手册**：[CLI 命令行与高级语法指南](docs/CLI_USAGE.md)
+  - 介绍如何配置 FrontMatter、使用离线图表公式以及图片的精准排版。
+- 🎨 **主题设计规范**：[MWRender 主题开发文档](docs/THEME_SPEC.md)
+  - 详细介绍渲染器生成的 HTML 树结构与 CSS 类名，教您如何定制独一无二的专属主题。
+- 💻 **C++ 接入指南**：[将 MWRender 集成到您的项目中](docs/INTEGRATION.md)
+  - 为 C++ 开发者提供集成说明、API 概览以及架构解析。
+
+## 📊 性能跑分
+
+在常规现代桌面 CPU 上的基准测试表现：
+- **普通包含各种组件的混合文档 (1MB)**: ~78 ms (吞吐量 ~12.8 MB/s)
+- **1000 篇短文档连发渲染**: ~124 ms (~0.12 ms/篇)
+- **常规 65KB 文章 (带代码高亮与主题)**: < 1 ms
+
+*（运行 `./build/release/mwrender_benchmark.exe` 亲自体验您的机器跑分）*
 
 ---
 
-## 📦 编译与安装 (Build & Install)
-
-本项目基于 CMake 构建。你可以在任何支持 C++20 的环境下使用 MinGW 或 MSVC 进行编译。
-
-```powershell
-# 1. 生成 Release 配置 (推荐)
-cmake --preset release
-
-# 2. 编译项目 (包含核心库与 CLI)
-cmake --build --preset release
-
-# 3. 运行所有的 CTest 测试 (包含一致性、压力测试与安全测试)
-ctest --preset release --output-on-failure
-
-# 4. 安装 (生成 include, lib, bin, share 等供消费)
-cmake --install build/release --prefix /your/install/path
-```
-
-对于 CMake 消费方项目，在你的 `CMakeLists.txt` 中：
-```cmake
-find_package(MWRender CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE MWRender::Core)
-```
-
----
-
-## 🎨 主题扩展 (Theme Packages)
-
-MWRender 设计了基于 `theme.json` 的标准主题包格式。你可以自由制作主题包并挂载到渲染器。
-
-目录结构：
-```text
-my-theme/
-├─ theme.json
-└─ content.css
-```
-
-`theme.json` 的基本清单：
-```json
-{
-  "schemaVersion": 1,
-  "id": "my-theme",
-  "name": "My Theme",
-  "version": "1.0.0",
-  "appearance": "light",
-  "entry": {
-    "content": "content.css"
-  }
-}
-```
-通过 C++ 的 `Engine::addThemeRoot()` 或 CLI 的 `--theme-path` 参数注册该主题所在的父目录后，即可使用 `--theme my-theme` 激活该主题。
-
----
-
-## ⚙️ Front Matter 配置
-
-MWRender 支持解析 Markdown 文件头部的受限 YAML (Front Matter)，你可以直接在文档内部声明渲染元数据：
-
-```yaml
----
-title: My Documentation
-theme: github-light
-css:
-  - note.css
----
-# Document Content
-...
-```
-*注：出于安全考虑，文档内的 `css` 引入默认是被拦截的。需要在 CLI 中通过 `--allow-document-css` 或在 API 的 `RenderOptions` 中显式开启 `allowDocumentCss`。*
-
----
-
-## 📖 更多文档
-
-* [COMPATIBILITY.md](docs/COMPATIBILITY.md) - 支持语法说明、安全策略边界及 CommonMark 兼容性测试报告。
-* [DevelopmentGuide.md](docs/DevelopmentGuide.md) - 深入了解架构、AST 结构、API 与主题制作详情。
-* [ImplementationPlan.md](docs/ImplementationPlan.md) - 项目开发演进与路线规划。
-
-## 第三方声明
-
-内置的 `github-light` 样式表基于 Sindre Sorhus 开发的 [`github-markdown-css`](https://github.com/sindresorhus/github-markdown-css) 5.9.0，并遵循其 MIT 开源协议（详见内置主题目录下的 `LICENSE`）。
+*MWRender - 为极致阅读体验与超高编译速度而生。*

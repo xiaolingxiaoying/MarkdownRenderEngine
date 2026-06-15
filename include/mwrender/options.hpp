@@ -1,27 +1,27 @@
 #pragma once
 
-#include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace mwrender {
 
-enum class InvalidUtf8Policy {
+enum class InvalidUtf8Policy : std::uint8_t {
     Reject,
     Replace
 };
 
-enum class OutputMode {
+enum class OutputMode : std::uint8_t {
     Fragment,
     FullDocument
 };
 
-enum class SourceMapMode {
+enum class SourceMapMode : std::uint8_t {
     None,
     Line,
     Full
 };
 
-enum class HtmlPolicy {
+enum class HtmlPolicy : std::uint8_t {
     Disabled,
     Sanitized,
     Trusted
@@ -32,6 +32,11 @@ struct MarkdownExtensions {
     bool taskLists = true;
     bool strikethrough = true;
     bool autoLinks = true;
+    bool latexMath = true;
+    bool mermaid = true;
+    bool toc = true;
+    bool footnotes = true;
+    bool highlight = true;
 };
 
 struct ParseOptions {
@@ -39,8 +44,8 @@ struct ParseOptions {
 };
 
 struct EngineOptions {
-    std::size_t maxInputBytes = 16U * 1024U * 1024U;
-    std::size_t maxThemeFileBytes = 2U * 1024U * 1024U;
+    std::size_t maxInputBytes = 16ULL * 1024ULL * 1024ULL;
+    std::size_t maxThemeFileBytes = 2ULL * 1024ULL * 1024ULL;
     std::size_t maxNestingDepth = 256;
     InvalidUtf8Policy invalidUtf8Policy = InvalidUtf8Policy::Reject;
 };

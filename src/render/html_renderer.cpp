@@ -4,6 +4,8 @@
 #include <cctype>
 #include <string_view>
 #include <unordered_map>
+#include <fstream>
+#include <sstream>
 
 #include "support/document_text.hpp"
 
@@ -164,15 +166,30 @@ public:
             renderHeading(node, output);
             break;
         case NodeType::Paragraph:
-            if (!tightListParagraph) {
+            if (!tightListParagraph && node.type != NodeType::FootnoteDef) {
                 output += "<p class=\"mw-paragraph\"";
                 appendSourceAttributes(node, output);
                 output += ">";
             }
             renderChildren(node, output);
-            if (!tightListParagraph) {
+            if (!tightListParagraph && node.type != NodeType::FootnoteDef) {
                 output += "</p>\n";
             }
+            break;
+        case NodeType::Toc:
+            if (options.extensions.toc && !tocHtml_.empty()) {
+                output += "<ul class=\"mw-toc\">\n";
+                output += tocHtml_;
+                output += "</ul>\n";
+            }
+            break;
+        case NodeType::FootnoteRef: {
+            const auto* data = std::get_if<FootnoteData>(&node.payload);
+            std::string id = data ? data->id : "";
+            output += "<sup id=\"fnref-" + escapeHtmlAttribute(id) + "\"><a href=\"#fn-" + escapeHtmlAttribute(id) + "\">" + escapeHtmlText(id) + "</a></sup>";
+            break;
+        }
+        case NodeType::FootnoteDef:
             break;
         case NodeType::BlockQuote: {
             std::string alertType;
@@ -283,6 +300,18 @@ public:
         case NodeType::TableCell:
             renderTableCell(node, output);
             break;
+        case NodeType::MathBlock:
+            output += "<div class=\"math-block\"";
+            appendSourceAttributes(node, output);
+            output += ">$$";
+            output += escapeHtmlText(node.literal);
+            output += "$$</div>\n";
+            break;
+        case NodeType::MathInline:
+            output += "<span class=\"math-inline\">\\(";
+            output += escapeHtmlText(node.literal);
+            output += "\\)</span>";
+            break;
         case NodeType::CodeBlock:
             renderCodeBlock(node, output);
             break;
@@ -368,12 +397,7 @@ private:
     void renderHeading(const Node& node, std::string& output) {
         const auto* data = std::get_if<HeadingData>(&node.payload);
         const unsigned int level = data ? data->level : 1;
-        auto slug = slugBase(plainText(node));
-        auto& count = slugCounts_[slug];
-        if (count > 0) {
-            slug += '-' + std::to_string(count);
-        }
-        ++count;
+        std::string slug = headingSlugs_[&node];
 
         output += "<h";
         output += std::to_string(level);
@@ -454,6 +478,14 @@ private:
     void renderCodeBlock(const Node& node, std::string& output) {
         const auto* data = std::get_if<CodeBlockData>(&node.payload);
         const auto language = data ? languageClass(data->language) : std::string{};
+        if (options.extensions.mermaid && language == "mermaid") {
+            output += "<div class=\"mermaid\"";
+            appendSourceAttributes(node, output);
+            output += ">";
+            output += escapeHtmlText(node.literal);
+            output += "</div>\n";
+            return;
+        }
         output += "<pre class=\"mw-code-block\"";
         if (!language.empty()) {
             output += " data-lang=\"";
@@ -545,11 +577,29 @@ private:
             output += escapeHtmlText(node.literal);
             return;
         }
+        std::string src = data->destination;
+        std::string style;
+        if (src.ends_with("#center")) {
+            style = "display: block; margin: 0 auto;";
+            src = src.substr(0, src.length() - 7);
+        } else if (src.ends_with("#left")) {
+            style = "float: left; margin-right: 1em;";
+            src = src.substr(0, src.length() - 5);
+        } else if (src.ends_with("#right")) {
+            style = "float: right; margin-left: 1em;";
+            src = src.substr(0, src.length() - 6);
+        }
+
         output += "<img class=\"mw-image\" src=\"";
-        output += escapeHtmlAttribute(data->destination);
+        output += escapeHtmlAttribute(src);
         output += "\" alt=\"";
         output += escapeHtmlAttribute(node.literal);
         output += '"';
+        if (!style.empty()) {
+            output += " style=\"";
+            output += style;
+            output += '"';
+        }
         if (!data->title.empty()) {
             output += " title=\"";
             output += escapeHtmlAttribute(data->title);
@@ -571,7 +621,31 @@ private:
         output += "</a>";
     }
 
+public:
+    std::string tocHtml_;
+    std::vector<const Node*> footnoteDefs_;
+    std::unordered_map<const Node*, std::string> headingSlugs_;
     std::unordered_map<std::string, std::size_t> slugCounts_;
+
+    void prePass(const Node& node) {
+        if (node.type == NodeType::Heading) {
+            const auto* data = std::get_if<HeadingData>(&node.payload);
+            const unsigned int level = data ? data->level : 1;
+            auto slug = slugBase(plainText(node));
+            auto& count = slugCounts_[slug];
+            if (count > 0) {
+                slug += '-' + std::to_string(count);
+            }
+            ++count;
+            headingSlugs_[&node] = slug;
+            tocHtml_ += "<li class=\"toc-level-" + std::to_string(level) + "\"><a href=\"#" + escapeHtmlAttribute(slug) + "\">" + escapeHtmlText(plainText(node)) + "</a></li>\n";
+        } else if (node.type == NodeType::FootnoteDef) {
+            footnoteDefs_.push_back(&node);
+        }
+        for (const auto& child : node.children) {
+            prePass(*child);
+        }
+    }
 };
 
 } // namespace
@@ -592,9 +666,24 @@ HtmlRenderResult HtmlRenderer::render(
     }
 
     RendererState state(options, sanitizer);
+    state.prePass(document);
     result.fragment =
         "<article class=\"mw-document markdown-body\">\n";
     state.renderChildren(document, result.fragment);
+
+    if (options.extensions.footnotes && !state.footnoteDefs_.empty()) {
+        result.fragment += "<hr class=\"footnotes-sep\">\n<section class=\"footnotes\">\n<ol>\n";
+        for (const auto* defNode : state.footnoteDefs_) {
+            const auto* data = std::get_if<FootnoteData>(&defNode->payload);
+            std::string id = data ? data->id : "";
+            result.fragment += "<li id=\"fn-" + escapeHtmlAttribute(id) + "\">\n";
+            state.renderChildren(*defNode, result.fragment);
+            result.fragment += " <a href=\"#fnref-" + escapeHtmlAttribute(id) + "\">↩</a>\n";
+            result.fragment += "</li>\n";
+        }
+        result.fragment += "</ol>\n</section>\n";
+    }
+
     result.fragment += "</article>\n";
     result.diagnostics = std::move(state.diagnostics);
     result.ok = !state.failed;
@@ -636,6 +725,49 @@ std::string assembleDocument(
     }
     html += "</head>\n<body style=\"background-color: var(--color-canvas-default, #fff);\">\n";
     html += fragment;
+
+    auto loadFile = [](const std::string& path) -> std::string {
+        std::ifstream file(path);
+        if (!file.is_open()) return "";
+        std::stringstream ss;
+        ss << file.rdbuf();
+        return ss.str();
+    };
+
+    if (options.extensions.latexMath) {
+        std::string mathjax = loadFile("resources/js/mathjax-tex-svg.js");
+        if (!mathjax.empty()) {
+            html += "<script>\n";
+            html += "window.MathJax = {\n";
+            html += "  tex: {\n";
+            html += "    inlineMath: [['$', '$']],\n";
+            html += "    displayMath: [['$$', '$$']]\n";
+            html += "  },\n";
+            html += "  svg: { fontCache: 'global' }\n";
+            html += "};\n";
+            html += "</script>\n";
+            html += "<script>\n" + mathjax + "\n</script>\n";
+        }
+    }
+
+    if (options.extensions.mermaid) {
+        std::string mermaid = loadFile("resources/js/mermaid.min.js");
+        if (!mermaid.empty()) {
+            html += "<script>\n" + mermaid + "\n</script>\n";
+            html += "<script>mermaid.initialize({startOnLoad:true});</script>\n";
+        }
+    }
+
+    if (options.extensions.highlight) {
+        std::string hljs = loadFile("resources/js/highlight.min.js");
+        std::string hljsCss = loadFile("resources/css/github.min.css");
+        if (!hljs.empty() && !hljsCss.empty()) {
+            html += "<style>\n" + hljsCss + "\n</style>\n";
+            html += "<script>\n" + hljs + "\n</script>\n";
+            html += "<script>hljs.highlightAll();</script>\n";
+        }
+    }
+
     html += "</body>\n</html>\n";
     return html;
 }

@@ -328,6 +328,26 @@ std::vector<std::unique_ptr<Node>> parseInline(
             }
         }
 
+        if (extensions.latexMath && source[index] == '$') {
+            std::size_t markerLength = 1;
+            while (index + markerLength < source.size() && source[index + markerLength] == '$') {
+                ++markerLength;
+            }
+            if (markerLength <= 2) {
+                const std::string marker(markerLength, '$');
+                const auto close = source.find(marker, index + markerLength);
+                if (close != std::string_view::npos) {
+                    auto node = std::make_unique<Node>();
+                    node->type = (markerLength == 2) ? NodeType::MathBlock : NodeType::MathInline;
+                    node->range = rangeFor(index, close + markerLength);
+                    node->literal = source.substr(index + markerLength, close - index - markerLength);
+                    children.push_back(std::move(node));
+                    index = close + markerLength;
+                    continue;
+                }
+            }
+        }
+
         if (source[index] == '`') {
             std::size_t markerLength = 1;
             while (index + markerLength < source.size() &&
@@ -347,6 +367,19 @@ std::vector<std::unique_ptr<Node>> parseInline(
                 node->literal = trim(node->literal);
                 children.push_back(std::move(node));
                 index = close + markerLength;
+                continue;
+            }
+        }
+
+        if (extensions.footnotes && source[index] == '[' && index + 1 < source.size() && source[index + 1] == '^') {
+            const auto close = source.find(']', index + 2);
+            if (close != std::string_view::npos) {
+                auto node = std::make_unique<Node>();
+                node->type = NodeType::FootnoteRef;
+                node->range = rangeFor(index, close + 1);
+                node->payload = FootnoteData{std::string(source.substr(index + 2, close - index - 2))};
+                children.push_back(std::move(node));
+                index = close + 1;
                 continue;
             }
         }
@@ -1263,7 +1296,55 @@ std::unique_ptr<Node> makeDocument(
                 continue;
             }
         }
+        if (extensions.toc && trim(line.text) == "[TOC]") {
+            auto node = std::make_unique<Node>();
+            node->type = NodeType::Toc;
+            node->range = makeRange(
+                line.startOffset, line.number, 1,
+                line.endOffset, line.number,
+                static_cast<std::uint32_t>(line.text.size() + 1));
+            document->children.push_back(std::move(node));
+            ++lineIndex;
+            continue;
+        }
 
+        if (extensions.footnotes) {
+            auto text = trimLeft(line.text);
+            if (text.starts_with("[^") && text.find("]:") != std::string_view::npos) {
+                auto idEnd = text.find("]:");
+                if (idEnd > 2) {
+                    std::string id(text.substr(2, idEnd - 2));
+                    const std::size_t startIndex = lineIndex;
+                    ++lineIndex;
+                    while (lineIndex < lines.size() &&
+                           !isBlank(lines[lineIndex].text) &&
+                           !startsBlock(lines[lineIndex].text)) {
+                        ++lineIndex;
+                    }
+                    const Line& last = lines[lineIndex - 1];
+                    auto node = std::make_unique<Node>();
+                    node->type = NodeType::FootnoteDef;
+                    node->payload = FootnoteData{id};
+                    node->range = makeRange(
+                        lines[startIndex].startOffset, lines[startIndex].number, 1,
+                        last.endOffset, last.number,
+                        static_cast<std::uint32_t>(last.text.size() + 1));
+                    
+                    auto firstLineText = std::string(text.substr(idEnd + 2));
+                    node->literal = std::string(trimLeft(firstLineText));
+                    if (node->literal.empty() && startIndex < lineIndex - 1) {
+                        node->literal = std::string(trimLeft(lines[startIndex + 1].text));
+                    }
+                    for (std::size_t i = startIndex + 1; i < lineIndex; ++i) {
+                        if (i == startIndex + 1 && firstLineText.empty()) continue;
+                        node->literal += "\n" + std::string(trimLeft(lines[i].text));
+                    }
+                    node->children = parseInline(node->literal, node->range.begin, extensions);
+                    document->children.push_back(std::move(node));
+                    continue;
+                }
+            }
+        }
 
         const std::size_t startIndex = lineIndex;
         ++lineIndex;

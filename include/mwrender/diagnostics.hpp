@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -7,7 +8,7 @@
 
 namespace mwrender {
 
-enum class DiagnosticSeverity {
+enum class DiagnosticSeverity : std::uint8_t {
     Info,
     Warning,
     Error
