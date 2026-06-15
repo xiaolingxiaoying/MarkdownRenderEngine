@@ -79,6 +79,27 @@ bool containsRemoteCssResource(std::string_view css) {
         normalized.find("url('//") != std::string::npos;
 }
 
+bool containsStyleEndTag(std::string_view css) {
+    constexpr std::string_view endTag = "</style";
+    if (css.size() < endTag.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index + endTag.size() <= css.size(); ++index) {
+        bool matches = true;
+        for (std::size_t offset = 0; offset < endTag.size(); ++offset) {
+            const auto byte = static_cast<unsigned char>(css[index + offset]);
+            if (static_cast<char>(std::tolower(byte)) != endTag[offset]) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool isWithin(
     const std::filesystem::path& root,
     const std::filesystem::path& candidate) {
@@ -99,7 +120,8 @@ public:
     explicit Impl(EngineOptions engineOptions)
         : options(std::move(engineOptions)),
           parser(options),
-          themeManager(options.maxThemeFileBytes) {}
+          themeManager(options.maxThemeFileBytes),
+          sanitizer(std::make_shared<SafeHtmlSanitizer>()) {}
 
     EngineOptions options;
     Parser parser;
@@ -194,6 +216,27 @@ RenderResult Engine::render(const RenderRequest& request) const {
             return result;
         }
     }
+    if (containsStyleEndTag(theme.css)) {
+        result.diagnostics.push_back({
+            effectiveOptions.strictTheme
+                ? DiagnosticSeverity::Error
+                : DiagnosticSeverity::Warning,
+            "MW2006",
+            "Theme '" + theme.id +
+                "' contains an HTML style end tag." +
+                (effectiveOptions.strictTheme
+                     ? std::string{}
+                     : " Falling back to github-light."),
+            std::nullopt,
+        });
+        if (effectiveOptions.strictTheme) {
+            return result;
+        }
+        theme = themeManagerSnapshot.resolve("github-light", true);
+        if (!theme.ok) {
+            return result;
+        }
+    }
 
     auto renderResult = impl_->htmlRenderer.render(
         *parseResult.document,
@@ -212,6 +255,16 @@ RenderResult Engine::render(const RenderRequest& request) const {
     result.css = std::move(theme.css);
 
     const auto appendCss = [&](std::string_view css, std::string_view name) {
+        if (containsStyleEndTag(css)) {
+            result.diagnostics.push_back({
+                DiagnosticSeverity::Warning,
+                "MW4006",
+                "CSS source '" + std::string(name) +
+                    "' was rejected because it can escape the HTML style element.",
+                std::nullopt,
+            });
+            return;
+        }
         if (!effectiveOptions.allowRemoteCssResources &&
             containsRemoteCssResource(css)) {
             result.diagnostics.push_back({

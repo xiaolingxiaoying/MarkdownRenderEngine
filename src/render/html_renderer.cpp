@@ -190,7 +190,13 @@ public:
         case NodeType::FootnoteRef: {
             const auto* data = std::get_if<FootnoteData>(&node.payload);
             std::string id = data ? data->id : "";
-            output += "<sup id=\"fnref-" + escapeHtmlAttribute(id) + "\"><a href=\"#fn-" + escapeHtmlAttribute(id) + "\">" + escapeHtmlText(id) + "</a></sup>";
+            const auto reference = footnoteRefIds_.find(&node);
+            const std::string referenceId = reference != footnoteRefIds_.end()
+                ? reference->second
+                : "fnref-" + id;
+            output += "<sup id=\"" + escapeHtmlAttribute(referenceId) +
+                "\"><a href=\"#fn-" + escapeHtmlAttribute(id) + "\">" +
+                escapeHtmlText(id) + "</a></sup>";
             break;
         }
         case NodeType::FootnoteDef:
@@ -629,6 +635,8 @@ public:
     std::string tocHtml_;
     std::vector<const Node*> footnoteDefs_;
     std::unordered_map<const Node*, std::string> headingSlugs_;
+    std::unordered_map<const Node*, std::string> footnoteRefIds_;
+    std::unordered_map<std::string, std::vector<std::string>> footnoteRefs_;
     std::unordered_map<std::string, std::size_t> slugCounts_;
 
     void prePass(const Node& node) {
@@ -643,6 +651,16 @@ public:
             ++count;
             headingSlugs_[&node] = slug;
             tocHtml_ += "<li class=\"toc-level-" + std::to_string(level) + "\"><a href=\"#" + escapeHtmlAttribute(slug) + "\">" + escapeHtmlText(plainText(node)) + "</a></li>\n";
+        } else if (node.type == NodeType::FootnoteRef) {
+            const auto* data = std::get_if<FootnoteData>(&node.payload);
+            const std::string id = data ? data->id : "";
+            auto& references = footnoteRefs_[id];
+            std::string referenceId = "fnref-" + id;
+            if (!references.empty()) {
+                referenceId += '-' + std::to_string(references.size() + 1);
+            }
+            references.push_back(referenceId);
+            footnoteRefIds_[&node] = std::move(referenceId);
         } else if (node.type == NodeType::FootnoteDef) {
             footnoteDefs_.push_back(&node);
         }
@@ -682,7 +700,18 @@ HtmlRenderResult HtmlRenderer::render(
             std::string id = data ? data->id : "";
             result.fragment += "<li id=\"fn-" + escapeHtmlAttribute(id) + "\">\n";
             state.renderChildren(*defNode, result.fragment);
-            result.fragment += " <a href=\"#fnref-" + escapeHtmlAttribute(id) + "\">↩</a>\n";
+            const auto references = state.footnoteRefs_.find(id);
+            if (references != state.footnoteRefs_.end()) {
+                for (std::size_t index = 0;
+                     index < references->second.size();
+                     ++index) {
+                    result.fragment += " <a href=\"#" +
+                        escapeHtmlAttribute(references->second[index]) +
+                        "\" aria-label=\"Back to reference " +
+                        std::to_string(index + 1) + "\">↩</a>";
+                }
+            }
+            result.fragment += '\n';
             result.fragment += "</li>\n";
         }
         result.fragment += "</ol>\n</section>\n";

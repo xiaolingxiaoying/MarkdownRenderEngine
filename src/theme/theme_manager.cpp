@@ -68,7 +68,7 @@ bool isWithin(
 
 struct ExternalTheme {
     ThemeInfo info;
-    std::filesystem::path cssPath;
+    std::vector<std::filesystem::path> cssPaths;
     std::string variablesCss;
 };
 
@@ -155,10 +155,11 @@ std::optional<ExternalTheme> loadExternalTheme(
         entryObjectValue ? entryObjectValue->asObject() : nullptr;
     const auto* contentValue =
         entryObjectValue ? entryObjectValue->get("content") : nullptr;
-    const auto* entry = contentValue ? contentValue->asString() : nullptr;
+    const auto* contentEntry =
+        contentValue ? contentValue->asString() : nullptr;
     if (!schemaVersion || *schemaVersion != 1.0 ||
         !id || !name || !version || !appearance || !entryObject ||
-        !entry || !isThemeId(*id)) {
+        !contentEntry || !isThemeId(*id)) {
         if (errorMessage) {
             *errorMessage = "theme.json does not satisfy schemaVersion 1";
         }
@@ -179,24 +180,43 @@ std::optional<ExternalTheme> loadExternalTheme(
         return std::nullopt;
     }
 
-    const std::filesystem::path entryPath(*entry);
-    if (entryPath.is_absolute()) {
-        if (errorMessage) {
-            *errorMessage = "theme CSS entry must be relative";
-        }
-        return std::nullopt;
-    }
     std::error_code error;
     const auto canonicalRoot =
         std::filesystem::weakly_canonical(themePath, error);
-    const auto canonicalEntry =
-        std::filesystem::weakly_canonical(themePath / entryPath, error);
-    if (error || !isWithin(canonicalRoot, canonicalEntry) ||
-        !std::filesystem::is_regular_file(canonicalEntry, error)) {
-        if (errorMessage) {
-            *errorMessage = "theme CSS entry escapes the theme or is missing";
+    std::vector<std::filesystem::path> cssPaths;
+    for (const std::string_view entryName : {"content", "code"}) {
+        const auto* entryValue = entryObjectValue->get(entryName);
+        if (!entryValue) {
+            continue;
         }
-        return std::nullopt;
+        const auto* entry = entryValue->asString();
+        if (!entry) {
+            if (errorMessage) {
+                *errorMessage =
+                    "theme CSS entry '" + std::string(entryName) +
+                    "' must be a string";
+            }
+            return std::nullopt;
+        }
+        const std::filesystem::path entryPath(*entry);
+        if (entryPath.is_absolute()) {
+            if (errorMessage) {
+                *errorMessage = "theme CSS entries must be relative";
+            }
+            return std::nullopt;
+        }
+        const auto canonicalEntry =
+            std::filesystem::weakly_canonical(themePath / entryPath, error);
+        if (error || !isWithin(canonicalRoot, canonicalEntry) ||
+            !std::filesystem::is_regular_file(canonicalEntry, error)) {
+            if (errorMessage) {
+                *errorMessage =
+                    "theme CSS entry '" + std::string(entryName) +
+                    "' escapes the theme or is missing";
+            }
+            return std::nullopt;
+        }
+        cssPaths.push_back(canonicalEntry);
     }
 
     return ExternalTheme{
@@ -209,7 +229,7 @@ std::optional<ExternalTheme> loadExternalTheme(
             canonicalRoot,
             true,
         },
-        canonicalEntry,
+        std::move(cssPaths),
         buildVariablesCss(*parsed.value),
     };
 }
@@ -311,21 +331,26 @@ ThemeResolution ThemeManager::resolve(
             });
             return resolution;
         }
-        const auto css = readFile(external->cssPath, maxFileBytes_);
-        if (!css) {
-            resolution.diagnostics.push_back({
-                DiagnosticSeverity::Error,
-                "MW2003",
-                "Theme CSS could not be read: " +
-                    external->cssPath.string(),
-                std::nullopt,
-            });
-            return resolution;
-        }
         resolution.ok = true;
         resolution.id = themeId;
         resolution.css = external->variablesCss;
-        resolution.css += *css;
+        for (const auto& cssPath : external->cssPaths) {
+            const auto css = readFile(cssPath, maxFileBytes_);
+            if (!css) {
+                resolution.ok = false;
+                resolution.diagnostics.push_back({
+                    DiagnosticSeverity::Error,
+                    "MW2003",
+                    "Theme CSS could not be read: " + cssPath.string(),
+                    std::nullopt,
+                });
+                return resolution;
+            }
+            if (!resolution.css.empty() && !resolution.css.ends_with('\n')) {
+                resolution.css += '\n';
+            }
+            resolution.css += *css;
+        }
         return resolution;
     }
 

@@ -153,6 +153,12 @@ std::optional<CliOptions> parseArguments(
                 std::cerr << "Unknown HTML policy: " << value << '\n';
                 return std::nullopt;
             }
+        } else if (argument == "-") {
+            if (options.input) {
+                std::cerr << "Only one input file may be specified.\n";
+                return std::nullopt;
+            }
+            options.input = argument;
         } else if (!argument.empty() && argument.front() == '-') {
             std::cerr << "Unknown option: " << argument << '\n';
             return std::nullopt;
@@ -427,7 +433,9 @@ int main(int argc, char** argv) {
 
     mwrender::RenderRequest request;
     request.markdown = *markdown;
-    request.sourcePath = cli->input;
+    if (cli->input && cli->input->string() != "-") {
+        request.sourcePath = cli->input;
+    }
     request.options = cli->render;
     request.css.files = cli->cssFiles;
 

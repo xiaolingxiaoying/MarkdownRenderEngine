@@ -123,6 +123,22 @@ void testUtf8PoliciesAndLimits() {
     result = replaceEngine.render(request);
     require(result.ok, "replace UTF-8 policy should remain renderable");
     require(hasDiagnostic(result, "MW0003"), "UTF-8 replacement should warn");
+    require(result.document != nullptr, "replacement render should return AST");
+    require(
+        result.document->range.end.offset == invalid.size(),
+        "replacement ranges should use original input byte offsets");
+
+    const std::string bomMarkdown = "\xEF\xBB\xBF# BOM";
+    request.markdown = bomMarkdown;
+    result = rejectEngine.render(request);
+    require(result.ok, "BOM input should render");
+    require(result.document != nullptr, "BOM render should return AST");
+    require(
+        result.document->children.front()->range.begin.offset == 3,
+        "BOM ranges should retain the original three-byte prefix");
+    require(
+        result.document->range.end.offset == bomMarkdown.size(),
+        "BOM document range should end at the original byte length");
 }
 
 void testSanitizerInjection() {

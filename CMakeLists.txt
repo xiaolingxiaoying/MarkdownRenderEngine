@@ -14,17 +14,32 @@ include(CMakePackageConfigHelpers)
 option(MWRENDER_BUILD_CLI "Build the mwrender command-line application" ON)
 option(MWRENDER_BUILD_TESTS "Build MWRender tests" ON)
 option(MWRENDER_ENABLE_YAML "Enable YAML front matter support" OFF)
-option(MWRENDER_ENABLE_SANITIZER "Enable an HTML sanitizer backend" OFF)
 
-# Build embed tool
-add_executable(mwrender_embed tools/embed.cpp)
+# Build or locate the host-side embed tool. Cross builds cannot normally run a
+# target executable on the build host.
+set(MWRENDER_EMBED_TOOL "" CACHE FILEPATH
+    "Host executable used to embed resources when cross-compiling")
+if(CMAKE_CROSSCOMPILING)
+    if(NOT MWRENDER_EMBED_TOOL)
+        message(FATAL_ERROR
+            "Cross-compiling requires MWRENDER_EMBED_TOOL to point to a host executable")
+    endif()
+    set(MWRENDER_EMBED_COMMAND "${MWRENDER_EMBED_TOOL}")
+    set(MWRENDER_EMBED_DEPENDS "${MWRENDER_EMBED_TOOL}")
+else()
+    add_executable(mwrender_embed tools/embed.cpp)
+    set(MWRENDER_EMBED_COMMAND "$<TARGET_FILE:mwrender_embed>")
+    set(MWRENDER_EMBED_DEPENDS mwrender_embed)
+endif()
 
 # Helper function to embed a file
 function(embed_file input_file variable_name output_file)
     add_custom_command(
         OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/${output_file}"
-        COMMAND mwrender_embed "${input_file}" "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/${output_file}" "${variable_name}"
-        DEPENDS "${input_file}" mwrender_embed
+        COMMAND "${CMAKE_COMMAND}" -E make_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender"
+        COMMAND "${MWRENDER_EMBED_COMMAND}" "${input_file}" "${CMAKE_CURRENT_BINARY_DIR}/generated/mwrender/${output_file}" "${variable_name}"
+        DEPENDS "${input_file}" ${MWRENDER_EMBED_DEPENDS}
         COMMENT "Embedding ${input_file} into ${output_file}"
         VERBATIM
     )
@@ -63,6 +78,7 @@ add_library(mwrender_core
     src/engine.cpp
     src/parser/parser.cpp
     src/render/html_renderer.cpp
+    src/sanitizer.cpp
     src/theme/theme_manager.cpp
     src/support/document_text.cpp
     src/support/json.cpp
@@ -130,6 +146,15 @@ if(BUILD_TESTING AND MWRENDER_BUILD_TESTS)
     target_link_libraries(mwrender_security_tests PRIVATE MWRender::Core)
     add_test(NAME mwrender.security COMMAND mwrender_security_tests)
 
+    add_executable(mwrender_snapshot_tests tests/snapshot_test.cpp)
+    target_compile_features(mwrender_snapshot_tests PRIVATE cxx_std_20)
+    target_compile_definitions(
+        mwrender_snapshot_tests
+        PRIVATE MWRENDER_SNAPSHOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/snapshots"
+    )
+    target_link_libraries(mwrender_snapshot_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.snapshot COMMAND mwrender_snapshot_tests)
+
     # Phase 8: Performance benchmarks (longer timeout; not a correctness gate)
     add_executable(mwrender_benchmark tests/benchmark.cpp)
     target_compile_features(mwrender_benchmark PRIVATE cxx_std_20)
@@ -162,6 +187,15 @@ if(BUILD_TESTING AND MWRENDER_BUILD_TESTS)
         set_tests_properties(
             mwrender.cli.config
             PROPERTIES PASS_REGULAR_EXPRESSION "mw-task-list"
+        )
+
+        add_test(
+            NAME mwrender.cli.stdin
+            COMMAND
+                "${CMAKE_COMMAND}"
+                "-DMWRENDER_CLI=$<TARGET_FILE:mwrender>"
+                "-DMWRENDER_INPUT=${CMAKE_CURRENT_SOURCE_DIR}/tests/snapshots/blocks.md"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_stdin_test.cmake"
         )
     endif()
 endif()

@@ -59,8 +59,8 @@ CommonMark conformance.
 
 - Raw HTML defaults to escaped output.
 - `Trusted` HTML requires an explicit option.
-- `Sanitized` HTML uses an injected `HtmlSanitizer`.
-- Without a sanitizer, non-strict mode escapes HTML and emits `MW3001`.
+- `Sanitized` HTML uses the built-in `SafeHtmlSanitizer`.
+- Applications can replace the built-in sanitizer through `setHtmlSanitizer`.
 - Unsafe link and image protocols are removed (`javascript:`, `vbscript:`, `data:`).
 - Case-insensitive scheme normalisation prevents obfuscation attacks.
 - External theme entry paths cannot escape their theme directory.
@@ -114,7 +114,7 @@ Run `mwrender_conformance_tests` to reproduce these results.
 | Indented code blocks (4 spaces) | CM §4.4 | Not supported; 4 spaces treated as paragraph indent |
 | Link reference definitions | CM §4.7 | Planned for a future version |
 | HTML entity decoding (`&amp;`, `&#42;`) | CM §2.5 | Entities treated as plain text; decoder not implemented |
-| Footnotes | – | Planned for v0.3 |
+| Definition lists | – | Planned for a future version |
 | Custom containers / Callout | – | Planned for v0.3 |
 | Bare URL autolinking | GFM §6.9 | Angle bracket form only |
 
@@ -137,9 +137,8 @@ From `mwrender_benchmark` on the development machine (exact values vary):
   delimiter algorithm.
 - GFM bare URL autolinking without angle brackets is not yet implemented.
 - Front Matter is a deliberately restricted YAML-like subset.
-- No built-in sanitizer backend is bundled; applications inject one.
-- Footnotes, definition lists and custom containers are not yet
-  implemented (Math and Mermaid are fully supported and embedded as offline runtimes in full HTML mode).
+- Definition lists and custom containers are not yet implemented.
+- Footnotes, Math, and Mermaid are supported.
 - Syntax highlighting is supported (Highlight.js is embedded in full HTML mode). In fragment mode, language classes are emitted for host integration.
 
 
@@ -159,12 +158,15 @@ full CommonMark/GFM compliance.
 | MW1103 | Warning | Front Matter missing closing delimiter |
 | MW2001 | Warning | Theme not found; fell back to default |
 | MW2005 | Warning/Error | Theme CSS contains remote resources |
-| MW3001 | Warning/Error | Sanitized mode requested but no sanitizer configured |
+| MW2006 | Warning/Error | Theme CSS can escape the generated style element |
+| MW3001 | Warning/Error | Sanitized mode requested after the sanitizer was explicitly cleared |
 | MW3002 | Warning | Unsafe link URL removed |
 | MW3003 | Warning | Unsafe image URL removed |
+| MW3004 | Warning | Built-in sanitizer removed unsafe or unsupported HTML |
 | MW4001 | Warning | CSS file could not be read |
 | MW4002 | Warning | CSS source rejected (remote resources) |
 | MW4003 | Warning | Absolute document CSS path rejected |
 | MW4004 | Warning | Document CSS path escapes document directory |
 | MW4005 | Warning | CSS file exceeds maximum size |
+| MW4006 | Warning | CSS source can escape the generated style element |
 | MW5001 | Error | Renderer received non-Document root node |

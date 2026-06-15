@@ -500,8 +500,9 @@ void testStrictHtmlPolicyMode() {
 
     const auto result = engine.render(request);
 
-    // Sanitized with no sanitizer → strict mode must fail
-    require(!result.ok, "strict sanitized mode with no sanitizer must fail");
+    require(result.ok, "strict sanitized mode should use the built-in sanitizer");
+    require(contains(result.html, "<div>test</div>"),
+            "strict sanitized mode should preserve allowed HTML");
 }
 
 // ---------------------------------------------------------------------------
@@ -600,6 +601,108 @@ void testThemeRemoteCssBlocked() {
     std::filesystem::remove_all(root, ec);
 }
 
+// ---------------------------------------------------------------------------
+// 29. Custom CSS must not escape the generated style element
+// ---------------------------------------------------------------------------
+void testCssStyleElementBreakout() {
+    std::cout << "  testCssStyleElementBreakout...\n";
+    mwrender::Engine engine;
+
+    mwrender::RenderRequest request;
+    request.markdown = "# Test\n";
+    request.options.outputMode = mwrender::OutputMode::FullDocument;
+    request.css.text.push_back(
+        "</StYlE><script>window.MW_XSS=1</script><style>");
+
+    const auto result = engine.render(request);
+
+    require(result.ok, "style breakout rejection should be non-fatal");
+    require(hasDiagnostic(result, "MW4006"),
+            "style breakout must produce MW4006");
+    require(!contains(result.html, "window.MW_XSS"),
+            "style breakout script must not appear in HTML");
+}
+
+void testThemeStyleElementBreakout() {
+    std::cout << "  testThemeStyleElementBreakout...\n";
+    const auto root =
+        std::filesystem::temp_directory_path() / "mwrender-security-style-theme";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root / "style-theme");
+
+    writeFile(root / "style-theme" / "theme.json",
+        "{\n"
+        "  \"schemaVersion\": 1,\n"
+        "  \"id\": \"style-theme\",\n"
+        "  \"name\": \"Style Breakout Theme\",\n"
+        "  \"version\": \"1.0.0\",\n"
+        "  \"appearance\": \"light\",\n"
+        "  \"entry\": { \"content\": \"content.css\" }\n"
+        "}\n");
+    writeFile(root / "style-theme" / "content.css",
+        "</style><script>window.MW_THEME_XSS=1</script><style>");
+
+    mwrender::Engine engine;
+    engine.addThemeRoot(root);
+    mwrender::RenderRequest request;
+    request.markdown = "# Test\n";
+    request.options.themeId = "style-theme";
+
+    const auto result = engine.render(request);
+
+    require(result.ok, "unsafe theme should fall back in non-strict mode");
+    require(hasDiagnostic(result, "MW2006"),
+            "unsafe theme must produce MW2006");
+    require(result.resolvedThemeId == "github-light",
+            "unsafe theme should fall back to github-light");
+    require(!contains(result.html, "window.MW_THEME_XSS"),
+            "theme style breakout script must not appear in HTML");
+
+    std::filesystem::remove_all(root, ec);
+}
+
+void testBuiltInHtmlSanitizer() {
+    std::cout << "  testBuiltInHtmlSanitizer...\n";
+    mwrender::Engine engine;
+
+    const auto allowed = renderFragment(
+        engine,
+        "<mark class=\"notice\">safe</mark>\n",
+        mwrender::HtmlPolicy::Sanitized);
+    require(allowed.ok, "built-in sanitizer should accept allowed HTML");
+    require(
+        contains(allowed.html, "<mark class=\"notice\">safe</mark>"),
+        "allowed tags and attributes should survive sanitization");
+
+    const auto eventHandler = renderFragment(
+        engine,
+        "<img src=\"image.png\" onerror=\"alert(1)\">\n",
+        mwrender::HtmlPolicy::Sanitized);
+    require(!contains(eventHandler.html, "onerror"),
+            "event handler attributes must be removed");
+    require(contains(eventHandler.html, "src=\"image.png\""),
+            "safe image URLs should survive sanitization");
+
+    const auto dangerousUrl = renderFragment(
+        engine,
+        "<a href=\"&#106;avascript:alert(1)\">bad</a>\n",
+        mwrender::HtmlPolicy::Sanitized);
+    require(!contains(dangerousUrl.html, "href="),
+            "entity-obfuscated dangerous URLs must be removed");
+
+    const auto blockedContainer = renderFragment(
+        engine,
+        "<svg><script>alert(1)</script><circle></circle></svg><b>ok</b>\n",
+        mwrender::HtmlPolicy::Sanitized);
+    require(!contains(blockedContainer.html, "alert(1)"),
+            "dangerous container contents must be removed");
+    require(contains(blockedContainer.html, "<b>ok</b>"),
+            "safe HTML after a blocked container should survive");
+    require(hasDiagnostic(blockedContainer, "MW3004"),
+            "sanitizer changes should produce MW3004");
+}
+
 } // namespace
 
 int main() {
@@ -633,6 +736,9 @@ int main() {
     testExtremelyLongUrl();
     testNullBytesInInput();
     testThemeRemoteCssBlocked();
+    testCssStyleElementBreakout();
+    testThemeStyleElementBreakout();
+    testBuiltInHtmlSanitizer();
 
     std::cout << "\nAll security regression tests passed.\n";
     return 0;

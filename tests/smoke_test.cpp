@@ -145,13 +145,14 @@ void testHtmlAndUrlSafety(mwrender::Engine& engine) {
     sanitized.options.outputMode = mwrender::OutputMode::Fragment;
     sanitized.options.htmlPolicy = mwrender::HtmlPolicy::Sanitized;
     result = engine.render(sanitized);
-    require(result.ok, "missing sanitizer should degrade in non-strict mode");
-    require(hasDiagnostic(result, "MW3001"), "missing sanitizer warning should exist");
-    require(contains(result.html, "&lt;mark&gt;"), "missing sanitizer should escape HTML");
+    require(result.ok, "built-in sanitizer should render safe HTML");
+    require(
+        contains(result.html, "<mark>safe</mark>"),
+        "built-in sanitizer should preserve allowed HTML");
 
     sanitized.options.strictHtmlPolicy = true;
     result = engine.render(sanitized);
-    require(!result.ok, "strict missing sanitizer should fail");
+    require(result.ok, "strict sanitized mode should use the built-in sanitizer");
 }
 
 void testThemeAndCss(mwrender::Engine& engine) {
@@ -231,6 +232,26 @@ void testGfmExtensions(mwrender::Engine& engine) {
     require(!contains(result.html, "mw-autolink"), "disabled autolink should not render");
 }
 
+void testRepeatedFootnoteReferences(mwrender::Engine& engine) {
+    mwrender::RenderRequest request;
+    request.markdown =
+        "first [^note] and second [^note]\n\n"
+        "[^note]: Footnote text\n";
+    request.options.outputMode = mwrender::OutputMode::Fragment;
+
+    const auto result = engine.render(request);
+    require(result.ok, "repeated footnote references should render");
+    require(
+        contains(result.html, "id=\"fnref-note\""),
+        "first footnote reference should use the base ID");
+    require(
+        contains(result.html, "id=\"fnref-note-2\""),
+        "second footnote reference should use a unique ID");
+    require(
+        contains(result.html, "href=\"#fnref-note-2\""),
+        "footnote definition should link back to the second reference");
+}
+
 void writeFile(
     const std::filesystem::path& path,
     std::string_view content) {
@@ -255,12 +276,15 @@ void testFrontMatterAndExternalTheme() {
         "  \"name\": \"\\uD83D\\uDCA1 Custom Light\",\n"
         "  \"version\": \"1.0.0\",\n"
         "  \"appearance\": \"light\",\n"
-        "  \"entry\": { \"content\": \"content.css\" },\n"
+        "  \"entry\": { \"content\": \"content.css\", \"code\": \"code.css\" },\n"
         "  \"variables\": { \"color.accent\": \"#123456\" }\n"
         "}\n");
     writeFile(
         root / "themes" / "custom-light" / "content.css",
         ".mw-document { color: rgb(1, 2, 3); }\n");
+    writeFile(
+        root / "themes" / "custom-light" / "code.css",
+        ".mw-code-block { tab-size: 4; }\n");
     writeFile(
         root / "note.css",
         ".note { border: 1px solid; }\n");
@@ -303,6 +327,9 @@ void testFrontMatterAndExternalTheme() {
         contains(result.css, "rgb(1, 2, 3)"),
         "external theme CSS should apply");
     require(
+        result.css.find("rgb(1, 2, 3)") < result.css.find("tab-size: 4"),
+        "theme content CSS should precede code CSS");
+    require(
         contains(result.css, "--mw-color-accent: #123456"),
         "theme variables should become CSS custom properties");
     require(
@@ -340,6 +367,7 @@ int main() {
     testThemeAndCss(engine);
     testDiagnostics(engine);
     testGfmExtensions(engine);
+    testRepeatedFootnoteReferences(engine);
     testFrontMatterAndExternalTheme();
 
     const auto themes = engine.listThemes();

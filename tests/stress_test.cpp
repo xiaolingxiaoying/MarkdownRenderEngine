@@ -281,8 +281,7 @@ void testRandomAsciiGarbage() {
     request.options.outputMode = mwrender::OutputMode::Fragment;
     const auto result = engine.render(request);
 
-    // Should not crash or loop; ok or not is fine
-    require(result.ok || !result.ok, "random punctuation should not cause crash");
+    require(result.ok, "random punctuation should remain renderable");
     require(!result.html.empty(), "random punctuation should produce some output");
 }
 

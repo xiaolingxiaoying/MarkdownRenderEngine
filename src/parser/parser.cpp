@@ -158,9 +158,17 @@ bool isValidUtf8(std::string_view value) {
     return true;
 }
 
-std::string replaceInvalidUtf8(std::string_view value) {
+struct Utf8Replacement {
+    std::string text;
+    std::vector<std::size_t> originalOffsets;
+};
+
+Utf8Replacement replaceInvalidUtf8(std::string_view value) {
     std::string result;
     result.reserve(value.size());
+    std::vector<std::size_t> originalOffsets;
+    originalOffsets.reserve(value.size() + 1);
+    originalOffsets.push_back(0);
     std::size_t index = 0;
 
     while (index < value.size()) {
@@ -185,13 +193,34 @@ std::string replaceInvalidUtf8(std::string_view value) {
 
         if (valid && isValidUtf8(value.substr(index, length))) {
             result.append(value.substr(index, length));
+            for (std::size_t part = 1; part <= length; ++part) {
+                originalOffsets.push_back(index + part);
+            }
             index += length;
         } else {
             result += "\xEF\xBF\xBD";
+            originalOffsets.push_back(index);
+            originalOffsets.push_back(index);
+            originalOffsets.push_back(index + 1);
             ++index;
         }
     }
-    return result;
+    return {std::move(result), std::move(originalOffsets)};
+}
+
+void remapSourceRanges(
+    Node& node,
+    const std::vector<std::size_t>& originalOffsets,
+    std::size_t baseOffset) {
+    const auto remap = [&](std::size_t offset) {
+        return baseOffset +
+            originalOffsets[std::min(offset, originalOffsets.size() - 1)];
+    };
+    node.range.begin.offset = remap(node.range.begin.offset);
+    node.range.end.offset = remap(node.range.end.offset);
+    for (auto& child : node.children) {
+        remapSourceRanges(*child, originalOffsets, baseOffset);
+    }
 }
 
 void appendText(
@@ -1399,11 +1428,14 @@ ParseResult Parser::parse(
         return result;
     }
 
+    std::size_t baseOffset = 0;
     if (markdown.starts_with("\xEF\xBB\xBF")) {
         markdown.remove_prefix(3);
+        baseOffset = 3;
     }
 
     std::string normalized;
+    std::vector<std::size_t> originalOffsets;
     if (!isValidUtf8(markdown)) {
         if (options_.invalidUtf8Policy == InvalidUtf8Policy::Reject) {
             result.diagnostics.push_back({
@@ -1414,7 +1446,9 @@ ParseResult Parser::parse(
             });
             return result;
         }
-        normalized = replaceInvalidUtf8(markdown);
+        auto replacement = replaceInvalidUtf8(markdown);
+        normalized = std::move(replacement.text);
+        originalOffsets = std::move(replacement.originalOffsets);
         markdown = normalized;
         result.diagnostics.push_back({
             DiagnosticSeverity::Warning,
@@ -1422,6 +1456,12 @@ ParseResult Parser::parse(
             "Invalid UTF-8 sequences were replaced.",
             std::nullopt,
         });
+    }
+    if (originalOffsets.empty()) {
+        originalOffsets.resize(markdown.size() + 1);
+        for (std::size_t index = 0; index <= markdown.size(); ++index) {
+            originalOffsets[index] = index;
+        }
     }
 
     const auto lines = scanLines(markdown);
@@ -1434,6 +1474,20 @@ ParseResult Parser::parse(
         options_.maxNestingDepth,
         0,
         true);
+    remapSourceRanges(*result.document, originalOffsets, baseOffset);
+    for (auto& diagnostic : result.diagnostics) {
+        if (!diagnostic.range) {
+            continue;
+        }
+        diagnostic.range->begin.offset = baseOffset +
+            originalOffsets[std::min(
+                diagnostic.range->begin.offset,
+                originalOffsets.size() - 1)];
+        diagnostic.range->end.offset = baseOffset +
+            originalOffsets[std::min(
+                diagnostic.range->end.offset,
+                originalOffsets.size() - 1)];
+    }
     result.ok = true;
     return result;
 }

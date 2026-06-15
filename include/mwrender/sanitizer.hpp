@@ -24,5 +24,11 @@ public:
         const SourceRange& range) const = 0;
 };
 
-} // namespace mwrender
+class SafeHtmlSanitizer final : public HtmlSanitizer {
+public:
+    [[nodiscard]] SanitizeResult sanitize(
+        std::string_view html,
+        const SourceRange& range) const override;
+};
 
+} // namespace mwrender
