@@ -232,6 +232,43 @@ void testGfmExtensions(mwrender::Engine& engine) {
     require(!contains(result.html, "mw-autolink"), "disabled autolink should not render");
 }
 
+void testMathRendering(mwrender::Engine& engine) {
+    mwrender::RenderRequest request;
+    request.markdown =
+        "Inline $E = mc^2$ before a soft break\n"
+        "and $\\lambda = \\frac{h}{p}$ after it.\n"
+        "\n"
+        "| Symbol | Formula |\n"
+        "| :---: | --- |\n"
+        "| $E$ | $E = mc^2$ |\n";
+    request.options.outputMode = mwrender::OutputMode::Fragment;
+
+    auto result = engine.render(request);
+    require(result.ok, "math fragment render should succeed");
+    require(
+        contains(result.html, "<span class=\"math-inline\">\\(E = mc^2\\)</span>"),
+        "paragraph inline math should render as MathJax inline delimiters");
+    require(
+        contains(result.html, "<span class=\"math-inline\">\\(\\lambda = \\frac{h}{p}\\)</span>"),
+        "inline math after a soft break should render");
+    require(
+        contains(result.html, "<td align=\"center\"><span class=\"math-inline\">\\(E\\)</span></td>"),
+        "table cell symbol math should render");
+    require(
+        contains(result.html, "<td><span class=\"math-inline\">\\(E = mc^2\\)</span></td>"),
+        "table cell formula math should render");
+
+    request.options.outputMode = mwrender::OutputMode::FullDocument;
+    result = engine.render(request);
+    require(result.ok, "math full document render should succeed");
+    require(
+        contains(result.html, "inlineMath: [['$', '$'], ['\\\\(', '\\\\)']]"),
+        "MathJax config should recognize renderer inline delimiters");
+    require(
+        contains(result.html, "displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']]"),
+        "MathJax config should recognize bracket display delimiters");
+}
+
 void testRepeatedFootnoteReferences(mwrender::Engine& engine) {
     mwrender::RenderRequest request;
     request.markdown =
@@ -367,6 +404,7 @@ int main() {
     testThemeAndCss(engine);
     testDiagnostics(engine);
     testGfmExtensions(engine);
+    testMathRendering(engine);
     testRepeatedFootnoteReferences(engine);
     testFrontMatterAndExternalTheme();
 

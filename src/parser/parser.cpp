@@ -590,6 +590,7 @@ std::vector<std::unique_ptr<Node>> parseInline(
                source[end] != '_' &&
                source[end] != '~' &&
                source[end] != '<' &&
+               source[end] != '$' &&
                source[end] != '\n' &&
                source[end] != '\r') {
             ++end;

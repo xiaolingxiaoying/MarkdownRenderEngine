@@ -764,8 +764,8 @@ std::string assembleDocument(
             html += "<script>\n";
             html += "window.MathJax = {\n";
             html += "  tex: {\n";
-            html += "    inlineMath: [['$', '$']],\n";
-            html += "    displayMath: [['$$', '$$']]\n";
+            html += "    inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],\n";
+            html += "    displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']]\n";
             html += "  },\n";
             html += "  svg: { fontCache: 'global' }\n";
             html += "};\n";
