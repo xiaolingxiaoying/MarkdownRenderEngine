@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -19,6 +20,12 @@ enum class SourceMapMode : std::uint8_t {
     None,
     Line,
     Full
+};
+
+enum class RenderMode : std::uint8_t {
+    Preview,
+    EditorView,
+    Export
 };
 
 enum class HtmlPolicy : std::uint8_t {
@@ -52,6 +59,7 @@ struct EngineOptions {
 
 struct RenderOptions {
     OutputMode outputMode = OutputMode::FullDocument;
+    RenderMode renderMode = RenderMode::Preview;
     SourceMapMode sourceMap = SourceMapMode::Line;
     HtmlPolicy htmlPolicy = HtmlPolicy::Disabled;
     MarkdownExtensions extensions;

@@ -223,6 +223,53 @@ void remapSourceRanges(
     }
 }
 
+std::string generateStableId(NodeType type, const SourceRange& range,
+                             std::string_view content = {}) {
+    auto h = content.empty()
+        ? std::hash<std::size_t>{}(static_cast<std::size_t>(type) ^
+            (range.begin.offset << 16) ^ range.end.offset)
+        : std::hash<std::string_view>{}(content) ^
+            (static_cast<std::size_t>(type) << 20);
+    auto prefix = [](NodeType t) -> std::string_view {
+        switch (t) {
+        case NodeType::Document: return "doc";
+        case NodeType::Heading: return "h";
+        case NodeType::Paragraph: return "p";
+        case NodeType::BlockQuote: return "bq";
+        case NodeType::List: return "list";
+        case NodeType::ListItem: return "li";
+        case NodeType::CodeBlock: return "cb";
+        case NodeType::HtmlBlock: return "html";
+        case NodeType::Table: return "tbl";
+        case NodeType::TableHead: return "thd";
+        case NodeType::TableBody: return "tbd";
+        case NodeType::TableRow: return "tr";
+        case NodeType::TableCell: return "td";
+        case NodeType::Text: return "txt";
+        case NodeType::Emphasis: return "em";
+        case NodeType::Strong: return "str";
+        case NodeType::Strikethrough: return "del";
+        case NodeType::InlineCode: return "ic";
+        case NodeType::Link: return "lnk";
+        case NodeType::Image: return "img";
+        case NodeType::HtmlInline: return "hi";
+        case NodeType::AutoLink: return "al";
+        case NodeType::MathBlock: return "mb";
+        case NodeType::MathInline: return "mi";
+        case NodeType::ThematicBreak: return "hr";
+        case NodeType::SoftBreak: return "brk";
+        case NodeType::HardBreak: return "hbrk";
+        case NodeType::Toc: return "toc";
+        case NodeType::FootnoteRef: return "fnr";
+        case NodeType::FootnoteDef: return "fnd";
+        case NodeType::FrontMatter: return "fm";
+        default: return "n";
+        }
+    }(type);
+    return std::string(prefix) + "_" + std::to_string(
+        h & 0xFFFFF);
+}
+
 void appendText(
     std::vector<std::unique_ptr<Node>>& children,
     std::string_view text,
@@ -239,6 +286,8 @@ void appendText(
     auto node = std::make_unique<Node>();
     node->type = NodeType::Text;
     node->range = range;
+    node->contentRange = range;
+    node->id = generateStableId(NodeType::Text, range);
     node->literal = text;
     children.push_back(std::move(node));
 }
@@ -297,16 +346,44 @@ std::unique_ptr<Node> makeInlineContainer(
     const MarkdownExtensions& extensions) {
     auto node = std::make_unique<Node>();
     node->type = type;
+    auto fullStart = base.offset + sourceStart;
+    auto fullEnd = base.offset + sourceStart + content.size() + markerWidth * 2;
     node->range = makeRange(
-        base.offset + sourceStart,
+        fullStart,
         base.line,
         base.column + static_cast<std::uint32_t>(sourceStart),
-        base.offset + sourceStart + content.size() + markerWidth * 2,
+        fullEnd,
         base.line,
         base.column + static_cast<std::uint32_t>(
                           sourceStart + content.size() + markerWidth * 2));
+    auto contentStart = fullStart + markerWidth;
+    node->contentRange = makeRange(
+        contentStart,
+        base.line,
+        base.column + static_cast<std::uint32_t>(sourceStart + markerWidth),
+        fullEnd - markerWidth,
+        base.line,
+        base.column + static_cast<std::uint32_t>(
+                          sourceStart + markerWidth + content.size()));
+    node->markerRanges.push_back(makeRange(
+        fullStart,
+        base.line,
+        base.column + static_cast<std::uint32_t>(sourceStart),
+        contentStart,
+        base.line,
+        base.column + static_cast<std::uint32_t>(sourceStart + markerWidth)));
+    node->markerRanges.push_back(makeRange(
+        fullEnd - markerWidth,
+        base.line,
+        base.column + static_cast<std::uint32_t>(
+            sourceStart + markerWidth + content.size()),
+        fullEnd,
+        base.line,
+        base.column + static_cast<std::uint32_t>(
+            sourceStart + content.size() + markerWidth * 2)));
+    node->id = generateStableId(type, node->range);
     SourcePosition contentBase{
-        base.offset + sourceStart + markerWidth,
+        contentStart,
         base.line,
         base.column + static_cast<std::uint32_t>(sourceStart + markerWidth),
     };
@@ -369,6 +446,10 @@ std::vector<std::unique_ptr<Node>> parseInline(
                     auto node = std::make_unique<Node>();
                     node->type = (markerLength == 2) ? NodeType::MathBlock : NodeType::MathInline;
                     node->range = rangeFor(index, close + markerLength);
+                    node->contentRange = rangeFor(index + markerLength, close);
+                    node->markerRanges.push_back(rangeFor(index, index + markerLength));
+                    node->markerRanges.push_back(rangeFor(close, close + markerLength));
+                    node->id = generateStableId(node->type, node->range);
                     node->literal = source.substr(index + markerLength, close - index - markerLength);
                     children.push_back(std::move(node));
                     index = close + markerLength;
@@ -388,8 +469,11 @@ std::vector<std::unique_ptr<Node>> parseInline(
             if (close != std::string_view::npos) {
                 auto node = std::make_unique<Node>();
                 node->type = NodeType::InlineCode;
-                node->range =
-                    rangeFor(index, close + markerLength);
+                node->range = rangeFor(index, close + markerLength);
+                node->contentRange = rangeFor(index + markerLength, close);
+                node->markerRanges.push_back(rangeFor(index, index + markerLength));
+                node->markerRanges.push_back(rangeFor(close, close + markerLength));
+                node->id = generateStableId(NodeType::InlineCode, node->range);
                 node->literal =
                     source.substr(index + markerLength, close - index - markerLength);
                 std::replace(node->literal.begin(), node->literal.end(), '\n', ' ');
@@ -406,6 +490,10 @@ std::vector<std::unique_ptr<Node>> parseInline(
                 auto node = std::make_unique<Node>();
                 node->type = NodeType::FootnoteRef;
                 node->range = rangeFor(index, close + 1);
+                node->contentRange = rangeFor(index + 2, close);
+                node->markerRanges.push_back(rangeFor(index, index + 2));
+                node->markerRanges.push_back(rangeFor(close, close + 1));
+                node->id = generateStableId(NodeType::FootnoteRef, node->range);
                 node->payload = FootnoteData{std::string(source.substr(index + 2, close - index - 2))};
                 children.push_back(std::move(node));
                 index = close + 1;
@@ -433,6 +521,18 @@ std::vector<std::unique_ptr<Node>> parseInline(
                         auto node = std::make_unique<Node>();
                         node->type = isImage ? NodeType::Image : NodeType::Link;
                         node->range = rangeFor(index, destinationEnd + 1);
+                        node->contentRange = rangeFor(
+                            isImage ? index + 2 : index + 1, labelEnd);
+                        if (isImage) {
+                            node->markerRanges.push_back(rangeFor(index, index + 2));
+                        } else {
+                            node->markerRanges.push_back(rangeFor(index, index + 1));
+                        }
+                        node->markerRanges.push_back(rangeFor(labelEnd, labelEnd + 1));
+                        node->markerRanges.push_back(rangeFor(labelEnd + 1, labelEnd + 2));
+                        node->markerRanges.push_back(rangeFor(destinationEnd, destinationEnd + 1));
+                        node->id = generateStableId(
+                            isImage ? NodeType::Image : NodeType::Link, node->range);
                         const auto label =
                             source.substr(labelStart, labelEnd - labelStart);
                         if (isImage) {
@@ -492,10 +592,18 @@ std::vector<std::unique_ptr<Node>> parseInline(
                     auto strongNode = std::make_unique<Node>();
                     strongNode->type = NodeType::Strong;
                     strongNode->range = rangeFor(index, close + 3);
+                    strongNode->contentRange = rangeFor(index + 3, close);
+                    strongNode->markerRanges.push_back(rangeFor(index, index + 3));
+                    strongNode->markerRanges.push_back(rangeFor(close, close + 3));
+                    strongNode->id = generateStableId(NodeType::Strong, strongNode->range);
                     
                     auto emNode = std::make_unique<Node>();
                     emNode->type = NodeType::Emphasis;
                     emNode->range = rangeFor(index + 1, close + 2);
+                    emNode->contentRange = rangeFor(index + 3, close);
+                    emNode->markerRanges.push_back(rangeFor(index + 1, index + 3));
+                    emNode->markerRanges.push_back(rangeFor(close, close + 2));
+                    emNode->id = generateStableId(NodeType::Emphasis, emNode->range);
                     
                     SourcePosition innerBase = base;
                     innerBase.offset += index + 3;
@@ -533,6 +641,10 @@ std::vector<std::unique_ptr<Node>> parseInline(
                     auto node = std::make_unique<Node>();
                     node->type = NodeType::AutoLink;
                     node->range = rangeFor(index, close + 1);
+                    node->contentRange = rangeFor(index + 1, close);
+                    node->markerRanges.push_back(rangeFor(index, index + 1));
+                    node->markerRanges.push_back(rangeFor(close, close + 1));
+                    node->id = generateStableId(NodeType::AutoLink, node->range);
                     node->payload =
                         LinkData{std::string(inside), std::string{}};
                     node->literal = inside.starts_with("mailto:")
@@ -552,6 +664,8 @@ std::vector<std::unique_ptr<Node>> parseInline(
                     auto node = std::make_unique<Node>();
                     node->type = NodeType::HtmlInline;
                     node->range = rangeFor(index, close + 1);
+                    node->contentRange = rangeFor(index, close + 1);
+                    node->id = generateStableId(NodeType::HtmlInline, node->range);
                     node->payload = HtmlData{std::string(candidate)};
                     children.push_back(std::move(node));
                     index = close + 1;
@@ -575,6 +689,8 @@ std::vector<std::unique_ptr<Node>> parseInline(
                 ++end;
             }
             node->range = rangeFor(index, end);
+            node->contentRange = node->range;
+            node->id = generateStableId(node->type, node->range);
             children.push_back(std::move(node));
             index = end;
             continue;
@@ -859,6 +975,8 @@ std::unique_ptr<Node> makeParagraph(
         contentEnd,
         last.number,
         static_cast<std::uint32_t>(contentEnd - last.startOffset + 1));
+    paragraph->contentRange = paragraph->range;
+    paragraph->id = generateStableId(NodeType::Paragraph, paragraph->range);
     paragraph->literal = source.substr(contentStart, contentEnd - contentStart);
     paragraph->children = parseInline(
         paragraph->literal,
@@ -874,6 +992,8 @@ std::unique_ptr<Node> makeSyntheticParagraph(
     auto paragraph = std::make_unique<Node>();
     paragraph->type = NodeType::Paragraph;
     paragraph->range = range;
+    paragraph->contentRange = range;
+    paragraph->id = generateStableId(NodeType::Paragraph, range);
     paragraph->literal = std::move(text);
     paragraph->children =
         parseInline(paragraph->literal, range.begin, extensions);
@@ -894,6 +1014,7 @@ std::unique_ptr<Node> makeDocument(
 
     if (currentDepth > maxNestingDepth) {
         document->range = makeRange(0, 1, 1, 0, 1, 1);
+        document->contentRange = document->range;
         diagnostics.push_back({
             DiagnosticSeverity::Warning,
             "MW0004",
@@ -913,6 +1034,8 @@ std::unique_ptr<Node> makeDocument(
     } else {
         document->range = makeRange(0, 1, 1, 0, 1, 1);
     }
+    document->contentRange = document->range;
+    document->id = generateStableId(NodeType::Document, document->range);
 
     std::size_t lineIndex = 0;
     if (isRoot && !lines.empty() && trim(lines.front().text) == "---") {
@@ -931,6 +1054,16 @@ std::unique_ptr<Node> makeDocument(
                 lines[closing].endOffset,
                 lines[closing].number,
                 static_cast<std::uint32_t>(lines[closing].text.size() + 1));
+            frontMatter->contentRange = frontMatter->range;
+            frontMatter->markerRanges.push_back(makeRange(
+                lines.front().startOffset, lines.front().number, 1,
+                lines.front().endOffset, lines.front().number,
+                static_cast<std::uint32_t>(lines.front().text.size() + 1)));
+            frontMatter->markerRanges.push_back(makeRange(
+                lines[closing].startOffset, lines[closing].number, 1,
+                lines[closing].endOffset, lines[closing].number,
+                static_cast<std::uint32_t>(lines[closing].text.size() + 1)));
+            frontMatter->id = generateStableId(NodeType::FrontMatter, frontMatter->range);
             frontMatter->literal = source.substr(
                 lines.front().startOffset,
                 lines[closing].endOffset - lines.front().startOffset);
@@ -1025,8 +1158,14 @@ std::unique_ptr<Node> makeDocument(
 
                     auto head = std::make_unique<Node>();
                     head->type = NodeType::TableHead;
+                    head->id = generateStableId(NodeType::TableHead,
+                        makeRange(line.startOffset, line.number, 1,
+                                  line.endOffset, line.number, 1));
                     auto headRow = std::make_unique<Node>();
                     headRow->type = NodeType::TableRow;
+                    headRow->id = generateStableId(NodeType::TableRow,
+                        makeRange(line.startOffset, line.number, 1,
+                                  line.endOffset, line.number, 1));
                     for (std::size_t cellIndex = 0;
                          cellIndex < headerCells.size();
                          ++cellIndex) {
@@ -1042,6 +1181,8 @@ std::unique_ptr<Node> makeDocument(
                             line.endOffset,
                             line.number,
                             static_cast<std::uint32_t>(line.text.size() + 1));
+                        cell->contentRange = cell->range;
+                        cell->id = generateStableId(NodeType::TableCell, cell->range);
                         cell->children = parseInline(
                             cell->literal,
                             cell->range.begin,
@@ -1054,6 +1195,9 @@ std::unique_ptr<Node> makeDocument(
                     lineIndex += 2;
                     auto body = std::make_unique<Node>();
                     body->type = NodeType::TableBody;
+                    body->id = generateStableId(NodeType::TableBody,
+                        makeRange(lines[lineIndex].startOffset, lines[lineIndex].number, 1,
+                                  lines[lineIndex].endOffset, lines[lineIndex].number, 1));
                     while (lineIndex < lines.size() &&
                            !isBlank(lines[lineIndex].text) &&
                            lines[lineIndex].text.find('|') !=
@@ -1063,6 +1207,9 @@ std::unique_ptr<Node> makeDocument(
                         rowCells.resize(alignments->size());
                         auto row = std::make_unique<Node>();
                         row->type = NodeType::TableRow;
+                        row->id = generateStableId(NodeType::TableRow,
+                            makeRange(rowLine.startOffset, rowLine.number, 1,
+                                      rowLine.endOffset, rowLine.number, 1));
                         for (std::size_t cellIndex = 0;
                              cellIndex < alignments->size();
                              ++cellIndex) {
@@ -1079,6 +1226,8 @@ std::unique_ptr<Node> makeDocument(
                                 rowLine.number,
                                 static_cast<std::uint32_t>(
                                     rowLine.text.size() + 1));
+                            cell->contentRange = cell->range;
+                            cell->id = generateStableId(NodeType::TableCell, cell->range);
                             cell->children = parseInline(
                                 cell->literal,
                                 cell->range.begin,
@@ -1098,6 +1247,8 @@ std::unique_ptr<Node> makeDocument(
                         tableEnd.number,
                         static_cast<std::uint32_t>(
                             tableEnd.text.size() + 1));
+                    table->contentRange = table->range;
+                    table->id = generateStableId(NodeType::Table, table->range);
                     document->children.push_back(std::move(table));
                     continue;
                 }
@@ -1131,6 +1282,24 @@ std::unique_ptr<Node> makeDocument(
                 closed ? endLine.endOffset : source.size(),
                 endLine.number,
                 static_cast<std::uint32_t>(endLine.text.size() + 1));
+            node->contentRange = makeRange(
+                line.endOffset + 1,
+                line.number,
+                static_cast<std::uint32_t>(line.text.size() + 2),
+                closed ? endLine.startOffset : node->range.end.offset,
+                endLine.number,
+                static_cast<std::uint32_t>(endLine.text.size() + 1));
+            node->markerRanges.push_back(makeRange(
+                line.startOffset, line.number, 1,
+                line.endOffset, line.number,
+                static_cast<std::uint32_t>(line.text.size() + 1)));
+            if (closed) {
+                node->markerRanges.push_back(makeRange(
+                    endLine.startOffset, endLine.number, 1,
+                    endLine.endOffset, endLine.number,
+                    static_cast<std::uint32_t>(endLine.text.size() + 1)));
+            }
+            node->id = generateStableId(NodeType::CodeBlock, node->range);
             auto info = trim(fence->info);
             const auto languageEnd = info.find_first_of(" \t");
             node->payload = CodeBlockData{
@@ -1164,6 +1333,21 @@ std::unique_ptr<Node> makeDocument(
                 line.endOffset,
                 line.number,
                 static_cast<std::uint32_t>(line.text.size() + 1));
+            node->contentRange = makeRange(
+                line.startOffset + heading->contentOffset,
+                line.number,
+                static_cast<std::uint32_t>(heading->contentOffset + 1),
+                line.endOffset,
+                line.number,
+                static_cast<std::uint32_t>(line.text.size() + 1));
+            node->markerRanges.push_back(makeRange(
+                line.startOffset,
+                line.number,
+                1,
+                line.startOffset + heading->level,
+                line.number,
+                static_cast<std::uint32_t>(heading->level + 1)));
+            node->id = generateStableId(NodeType::Heading, node->range);
             node->payload = HeadingData{heading->level};
             node->literal = heading->content;
             node->children = parseInline(
@@ -1189,6 +1373,9 @@ std::unique_ptr<Node> makeDocument(
                 line.endOffset,
                 line.number,
                 static_cast<std::uint32_t>(line.text.size() + 1));
+            node->contentRange = node->range;
+            node->markerRanges.push_back(node->range);
+            node->id = generateStableId(NodeType::ThematicBreak, node->range);
             document->children.push_back(std::move(node));
             ++lineIndex;
             continue;
@@ -1223,6 +1410,19 @@ std::unique_ptr<Node> makeDocument(
                 last.endOffset,
                 last.number,
                 static_cast<std::uint32_t>(last.text.size() + 1));
+            node->contentRange = makeRange(
+                lines[startIndex].startOffset,
+                lines[startIndex].number,
+                1,
+                last.endOffset,
+                last.number,
+                static_cast<std::uint32_t>(last.text.size() + 1));
+            for (std::size_t qi = startIndex; qi < lineIndex; ++qi) {
+                node->markerRanges.push_back(makeRange(
+                    lines[qi].startOffset, lines[qi].number, 1,
+                    lines[qi].startOffset + 1, lines[qi].number, 2));
+            }
+            node->id = generateStableId(NodeType::BlockQuote, node->range);
             node->literal = std::string(trimRight(content));
             auto innerLines = scanLines(node->literal);
             auto innerDoc = makeDocument(node->literal, innerLines, diagnostics, metadata, extensions, maxNestingDepth, currentDepth + 1, false);
@@ -1258,6 +1458,7 @@ std::unique_ptr<Node> makeDocument(
                 auto itemContent =
                     itemLine.text.substr(marker->contentOffset);
                 ListItemData itemData;
+                std::size_t markerEnd = marker->contentOffset;
                 if (extensions.taskLists &&
                     itemContent.size() >= 3 &&
                     itemContent[0] == '[' &&
@@ -1269,17 +1470,45 @@ std::unique_ptr<Node> makeDocument(
                     itemData.checked =
                         itemContent[1] == 'x' || itemContent[1] == 'X';
                     itemContent.remove_prefix(3);
+                    markerEnd += 3;
                     if (!itemContent.empty() && itemContent.front() == ' ') {
                         itemContent.remove_prefix(1);
+                        markerEnd += 1;
                     }
                     item->payload = itemData;
                 }
-                item->children.push_back(makeSyntheticParagraph(
-                    std::string(itemContent),
-                    makeRange(
+                item->contentRange = makeRange(
+                    itemLine.startOffset + markerEnd,
+                    itemLine.number,
+                    static_cast<std::uint32_t>(markerEnd + 1),
+                    itemLine.endOffset,
+                    itemLine.number,
+                    static_cast<std::uint32_t>(itemLine.text.size() + 1));
+                item->markerRanges.push_back(makeRange(
+                    itemLine.startOffset,
+                    itemLine.number,
+                    1,
+                    itemLine.startOffset + marker->contentOffset,
+                    itemLine.number,
+                    static_cast<std::uint32_t>(marker->contentOffset + 1)));
+                if (itemData.task) {
+                    item->markerRanges.push_back(makeRange(
                         itemLine.startOffset + marker->contentOffset,
                         itemLine.number,
                         static_cast<std::uint32_t>(marker->contentOffset + 1),
+                        itemLine.startOffset + markerEnd,
+                        itemLine.number,
+                        static_cast<std::uint32_t>(markerEnd + 1)));
+                }
+                item->id = generateStableId(
+                    itemData.task ? NodeType::ListItem : NodeType::ListItem,
+                    item->range);
+                item->children.push_back(makeSyntheticParagraph(
+                    std::string(itemContent),
+                    makeRange(
+                        itemLine.startOffset + markerEnd,
+                        itemLine.number,
+                        static_cast<std::uint32_t>(markerEnd + 1),
                         itemLine.endOffset,
                         itemLine.number,
                         static_cast<std::uint32_t>(itemLine.text.size() + 1)),
@@ -1296,6 +1525,8 @@ std::unique_ptr<Node> makeDocument(
                 last.endOffset,
                 last.number,
                 static_cast<std::uint32_t>(last.text.size() + 1));
+            list->contentRange = list->range;
+            list->id = generateStableId(NodeType::List, list->range);
             document->children.push_back(std::move(list));
             continue;
         }
@@ -1330,6 +1561,8 @@ std::unique_ptr<Node> makeDocument(
                     last.endOffset,
                     last.number,
                     static_cast<std::uint32_t>(last.text.size() + 1));
+                node->contentRange = node->range;
+                node->id = generateStableId(NodeType::HtmlBlock, node->range);
                 node->payload = HtmlData{
                     std::string(source.substr(
                         lines[startIndex].startOffset,
@@ -1346,6 +1579,9 @@ std::unique_ptr<Node> makeDocument(
                 line.startOffset, line.number, 1,
                 line.endOffset, line.number,
                 static_cast<std::uint32_t>(line.text.size() + 1));
+            node->contentRange = node->range;
+            node->markerRanges.push_back(node->range);
+            node->id = generateStableId(NodeType::Toc, node->range);
             document->children.push_back(std::move(node));
             ++lineIndex;
             continue;
@@ -1372,6 +1608,13 @@ std::unique_ptr<Node> makeDocument(
                         lines[startIndex].startOffset, lines[startIndex].number, 1,
                         last.endOffset, last.number,
                         static_cast<std::uint32_t>(last.text.size() + 1));
+                    node->contentRange = node->range;
+                    node->markerRanges.push_back(makeRange(
+                        lines[startIndex].startOffset, lines[startIndex].number, 1,
+                        lines[startIndex].startOffset + static_cast<std::size_t>(idEnd) + 2,
+                        lines[startIndex].number,
+                        static_cast<std::uint32_t>(idEnd + 3)));
+                    node->id = generateStableId(NodeType::FootnoteDef, node->range);
                     
                     auto firstLineText = std::string(text.substr(idEnd + 2));
                     node->literal = std::string(trimLeft(firstLineText));

@@ -390,6 +390,11 @@ private:
         if (options.sourceMap == SourceMapMode::None) {
             return;
         }
+        if (options.renderMode == RenderMode::EditorView && !node.id.empty()) {
+            output += " data-node-id=\"";
+            output += node.id;
+            output += '"';
+        }
         output += " data-source-line=\"";
         output += std::to_string(node.range.begin.line);
         output += '"';

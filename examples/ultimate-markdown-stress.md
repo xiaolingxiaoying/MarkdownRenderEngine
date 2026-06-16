@@ -101,20 +101,20 @@ Repeated headings above test slug de-duplication and outline generation.
 
 ## 4. Tables and Alignment
 
-| Feature | Example | Expected HTML Surface |
-| :--- | :---: | ---: |
-| Table alignment | left / center / right | `<table>` |
-| Inline code | `render(request)` | `<code>` |
-| Math trigger | `$x^2$` | MathJax |
-| Mermaid trigger | fenced `mermaid` | SVG after client render |
-| Autolink | <https://example.com> | `<a>` |
+| Feature         |        Example        |   Expected HTML Surface |
+| :-------------- | :-------------------: | ----------------------: |
+| Table alignment | left / center / right |               `<table>` |
+| Inline code     |   `render(request)`   |                `<code>` |
+| Math trigger    |        $x^2$          |                 MathJax |
+| Mermaid trigger |   fenced `mermaid`    | SVG after client render |
+| Autolink        | <https://example.com> |                   `<a>` |
 
-| Physics Quantity | Symbol | Formula | SI Unit |
-| :--- | :---: | :--- | ---: |
-| Energy | $E$ | $E = mc^2$ | J |
-| Momentum | $\vec p$ | $\vec p = m\vec v$ | kg m/s |
-| Angular frequency | $\omega$ | $\omega = 2\pi f$ | rad/s |
-| Magnetic flux | $\Phi_B$ | $\Phi_B = \int \vec B \cdot d\vec A$ | Wb |
+| Physics Quantity  |  Symbol  | Formula                              | SI Unit |
+| :---------------- | :------: | :----------------------------------- | ------: |
+| Energy            |   $E$    | $E = mc^2$                           |       J |
+| Momentum          | $\vec p$ | $\vec p = m\vec v$                   |  kg m/s |
+| Angular frequency | $\omega$ | $\omega = 2\pi f$                    |   rad/s |
+| Magnetic flux     | $\Phi_B$ | $\Phi_B = \int \vec B \cdot d\vec A$ |      Wb |
 
 ## 5. Code Blocks
 
@@ -385,4 +385,4 @@ Final checklist:
 - [x] Inline and block math
 - [x] Mermaid flowchart, sequence, class, state, pie, and gantt diagrams
 - [x] Raw HTML under sanitized policy
-- [x] Footnotes
+- [ ] Footnotes

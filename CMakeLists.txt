@@ -77,7 +77,10 @@ add_library(mwrender_core
     src/analysis/document_analysis.cpp
     src/engine.cpp
     src/parser/parser.cpp
+    src/query/query.cpp
+    src/query/source_map.cpp
     src/render/html_renderer.cpp
+    src/serializer/serializer.cpp
     src/sanitizer.cpp
     src/theme/theme_manager.cpp
     src/support/document_text.cpp
@@ -154,6 +157,11 @@ if(BUILD_TESTING AND MWRENDER_BUILD_TESTS)
     )
     target_link_libraries(mwrender_snapshot_tests PRIVATE MWRender::Core)
     add_test(NAME mwrender.snapshot COMMAND mwrender_snapshot_tests)
+
+    add_executable(mwrender_new_features_tests tests/new_features_test.cpp)
+    target_compile_features(mwrender_new_features_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_new_features_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.new_features COMMAND mwrender_new_features_tests)
 
     # Phase 8: Performance benchmarks (longer timeout; not a correctness gate)
     add_executable(mwrender_benchmark tests/benchmark.cpp)

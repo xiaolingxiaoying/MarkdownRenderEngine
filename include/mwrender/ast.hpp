@@ -87,6 +87,18 @@ struct FootnoteData {
     std::string id;
 };
 
+struct EmphasisData {
+    char delimiter = '*';
+};
+
+struct StrongData {
+    char delimiter = '*';
+};
+
+struct StrikethroughData {
+    char delimiter = '~';
+};
+
 using NodePayload = std::variant<
     std::monostate,
     HeadingData,
@@ -97,11 +109,17 @@ using NodePayload = std::variant<
     ImageData,
     HtmlData,
     TableCellData,
-    FootnoteData>;
+    FootnoteData,
+    EmphasisData,
+    StrongData,
+    StrikethroughData>;
 
 struct Node {
+    std::string id;
     NodeType type = NodeType::Document;
     SourceRange range;
+    SourceRange contentRange;
+    std::vector<SourceRange> markerRanges;
     NodePayload payload;
     std::string literal;
     std::vector<std::unique_ptr<Node>> children;

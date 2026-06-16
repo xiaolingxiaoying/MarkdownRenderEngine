@@ -10,6 +10,7 @@
 #include <utility>
 
 #include <mwrender/parser.hpp>
+#include <mwrender/query.hpp>
 
 #include "analysis/document_analysis.hpp"
 #include "render/html_renderer.hpp"
@@ -115,6 +116,8 @@ bool isWithin(
 
 } // namespace
 
+static std::unique_ptr<Node> cloneSubtree(const Node& node);
+
 class Engine::Impl {
 public:
     explicit Impl(EngineOptions engineOptions)
@@ -150,6 +153,115 @@ void Engine::setHtmlSanitizer(
     std::shared_ptr<const HtmlSanitizer> sanitizer) {
     std::scoped_lock lock(impl_->resourcesMutex);
     impl_->sanitizer = std::move(sanitizer);
+}
+
+ParseResult Engine::parse(
+    std::string_view markdown,
+    const ParseOptions& options) const {
+    return impl_->parser.parse(markdown, options);
+}
+
+IncrementalParseResult Engine::update(
+    const Node& oldDocument,
+    const TextChange& change) const {
+    IncrementalParseResult result;
+
+    std::string newMarkdown = oldDocument.literal;
+    if (!newMarkdown.empty()) {
+        newMarkdown.replace(change.from, change.to - change.from,
+                            change.insertedText);
+    } else {
+        newMarkdown = change.insertedText;
+    }
+
+    auto parseResult = impl_->parser.parse(
+        newMarkdown, ParseOptions{});
+    if (!parseResult.ok || !parseResult.document) {
+        return result;
+    }
+
+    std::vector<std::string> oldIds;
+    auto collectIds = [](const Node& node, std::vector<std::string>& ids,
+                          auto& ref) -> void {
+        if (!node.id.empty()) ids.push_back(node.id);
+        for (const auto& child : node.children) {
+            ref(*child, ids, ref);
+        }
+    };
+    collectIds(oldDocument, oldIds, collectIds);
+
+    std::vector<std::string> newIds;
+    collectIds(*parseResult.document, newIds, collectIds);
+
+    auto sortedOld = oldIds;
+    auto sortedNew = newIds;
+    std::sort(sortedOld.begin(), sortedOld.end());
+    std::sort(sortedNew.begin(), sortedNew.end());
+
+    std::set_difference(sortedNew.begin(), sortedNew.end(),
+                        sortedOld.begin(), sortedOld.end(),
+                        std::back_inserter(result.insertedNodeIds));
+
+    std::set_difference(sortedOld.begin(), sortedOld.end(),
+                        sortedNew.begin(), sortedNew.end(),
+                        std::back_inserter(result.removedNodeIds));
+
+    for (const auto& id : sortedNew) {
+        if (!std::binary_search(sortedOld.begin(), sortedOld.end(), id)) {
+            continue;
+        }
+    }
+    for (const auto& oldId : oldIds) {
+        if (std::find(newIds.begin(), newIds.end(), oldId) != newIds.end()) {
+            result.changedNodeIds.push_back(oldId);
+        }
+    }
+
+    result.ok = parseResult.ok;
+    result.document = std::move(parseResult.document);
+    result.diagnostics = std::move(parseResult.diagnostics);
+    return result;
+}
+
+RenderResult Engine::renderNode(const NodeRenderRequest& request) const {
+    RenderResult result;
+    if (!request.document) {
+        result.diagnostics.push_back({
+            DiagnosticSeverity::Error, "MW3001",
+            "renderNode: null document pointer.", std::nullopt});
+        return result;
+    }
+
+    const Node* target = findNodeById(*request.document, request.nodeId);
+    if (!target) {
+        result.diagnostics.push_back({
+            DiagnosticSeverity::Error, "MW3002",
+            "renderNode: node '" + request.nodeId + "' not found.",
+            std::nullopt});
+        return result;
+    }
+
+    auto sanitizer = [this]() -> std::shared_ptr<const HtmlSanitizer> {
+        std::scoped_lock lock(impl_->resourcesMutex);
+        return impl_->sanitizer;
+    }();
+
+    Node wrapper;
+    wrapper.type = NodeType::Document;
+    wrapper.range = target->range;
+    wrapper.contentRange = target->contentRange;
+    wrapper.children.push_back(cloneSubtree(*target));
+
+    auto renderResult = impl_->htmlRenderer.render(
+        wrapper, request.options, sanitizer.get());
+    result.diagnostics = std::move(renderResult.diagnostics);
+    if (!renderResult.ok) {
+        return result;
+    }
+
+    result.fragment = std::move(renderResult.fragment);
+    result.ok = true;
+    return result;
 }
 
 RenderResult Engine::render(const RenderRequest& request) const {
@@ -394,6 +506,135 @@ RenderResult Engine::render(const RenderRequest& request) const {
             return diagnostic.severity == DiagnosticSeverity::Error;
         });
     return result;
+}
+
+std::string Engine::serialize(
+    const Node& document,
+    const MarkdownStyle& style) const {
+    return serializeMarkdown(document, style);
+}
+
+static std::unique_ptr<Node> cloneSubtree(const Node& node) {
+    auto n = std::make_unique<Node>();
+    n->id = node.id;
+    n->type = node.type;
+    n->range = node.range;
+    n->contentRange = node.contentRange;
+    n->markerRanges = node.markerRanges;
+    n->payload = node.payload;
+    n->literal = node.literal;
+    n->children.reserve(node.children.size());
+    for (const auto& child : node.children) {
+        n->children.push_back(cloneSubtree(*child));
+    }
+    return n;
+}
+
+std::unique_ptr<Node> Engine::applyCommand(
+    const Node& document,
+    const Command& command) const {
+    auto doc = cloneSubtree(document);
+
+    auto target = findNodeById(*doc, command.nodeId);
+    if (!target) {
+        return doc;
+    }
+
+    switch (command.type) {
+    case Command::Type::ToggleTask: {
+        auto* data = std::get_if<ListItemData>(&target->payload);
+        if (data) {
+            data->task = true;
+            data->checked = !data->checked;
+        }
+        break;
+    }
+    case Command::Type::SetHeadingLevel: {
+        auto* data = std::get_if<HeadingData>(&target->payload);
+        if (data && !command.arg1.empty()) {
+            int level = std::stoi(command.arg1);
+            if (level >= 1 && level <= 6) {
+                data->level = static_cast<std::uint8_t>(level);
+            }
+        }
+        break;
+    }
+    case Command::Type::WrapStrong: {
+        auto wrapper = std::make_unique<Node>();
+        wrapper->type = NodeType::Strong;
+        wrapper->children = std::move(target->children);
+        target->children.clear();
+        target->children.push_back(std::move(wrapper));
+        break;
+    }
+    case Command::Type::WrapEmphasis: {
+        auto wrapper = std::make_unique<Node>();
+        wrapper->type = NodeType::Emphasis;
+        wrapper->children = std::move(target->children);
+        target->children.clear();
+        target->children.push_back(std::move(wrapper));
+        break;
+    }
+    case Command::Type::InsertLink: {
+        auto wrapper = std::make_unique<Node>();
+        wrapper->type = NodeType::Link;
+        wrapper->payload = LinkData{command.arg1, command.arg2};
+        auto textNode = std::make_unique<Node>();
+        textNode->type = NodeType::Text;
+        textNode->literal = command.arg1;
+        wrapper->children.push_back(std::move(textNode));
+        target->children.push_back(std::move(wrapper));
+        break;
+    }
+    case Command::Type::ToggleStrikethrough: {
+        auto wrapper = std::make_unique<Node>();
+        wrapper->type = NodeType::Strikethrough;
+        wrapper->children = std::move(target->children);
+        target->children.clear();
+        target->children.push_back(std::move(wrapper));
+        break;
+    }
+    case Command::Type::IndentListItem: {
+        auto* parent = findNodeById(*doc, command.arg1);
+        if (parent && parent->type == NodeType::List) {
+            for (std::size_t i = 1; i < parent->children.size(); ++i) {
+                if (parent->children[i]->id == command.nodeId && i > 0) {
+                    auto nestedList = std::make_unique<Node>();
+                    nestedList->type = NodeType::List;
+                    nestedList->payload = parent->payload;
+                    nestedList->children.push_back(
+                        std::move(parent->children[i]));
+                    parent->children[i - 1]->children.push_back(
+                        std::move(nestedList));
+                    parent->children.erase(
+                        parent->children.begin() +
+                        static_cast<std::ptrdiff_t>(i));
+                    break;
+                }
+            }
+        }
+        break;
+    }
+    case Command::Type::ToggleList: {
+        auto* data = std::get_if<ListItemData>(&target->payload);
+        if (data) {
+            data->task = false;
+        }
+        break;
+    }
+    case Command::Type::InsertImage: {
+        auto wrapper = std::make_unique<Node>();
+        wrapper->type = NodeType::Image;
+        wrapper->payload = ImageData{command.arg1, command.arg2};
+        wrapper->literal = command.arg2.empty() ? "image" : command.arg2;
+        target->children.push_back(std::move(wrapper));
+        break;
+    }
+    case Command::Type::OutdentListItem:
+        break;
+    }
+
+    return doc;
 }
 
 std::vector<ThemeInfo> Engine::listThemes() const {
