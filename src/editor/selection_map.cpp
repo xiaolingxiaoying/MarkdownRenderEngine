@@ -1,4 +1,5 @@
 #include <mwrender/editor/selection_map.hpp>
+#include <mwrender/editor/document_session.hpp>
 #include <mwrender/query.hpp>
 
 namespace mwrender::editor {
@@ -6,60 +7,72 @@ namespace mwrender::editor {
 SelectionMap::SelectionMap(const DocumentSession& session)
     : session_(session) {}
 
+namespace {
+
+// 获取节点的"可视文本起始偏移"：排除所有标记后，可见文本在 source 中的起始位置
+std::size_t visualBase(const Node& node) {
+    // Text 和 CodeBlock 节点使用 range.begin（它们本身就是可视文本）
+    if (node.type == NodeType::Text || node.type == NodeType::CodeBlock) {
+        return node.range.begin.offset;
+    }
+    // 容器节点使用 contentRange.begin（已排除开头标记）
+    return node.contentRange.begin.offset;
+}
+
+// 获取节点的"可视文本结束偏移"
+std::size_t visualEnd(const Node& node) {
+    if (node.type == NodeType::Text || node.type == NodeType::CodeBlock) {
+        return node.range.end.offset;
+    }
+    return node.contentRange.end.offset;
+}
+
+}
+
 SourcePositionEx SelectionMap::visualToSource(const VisualPosition& visual) const {
     SourcePositionEx source;
     source.contextNodeId = visual.nodeId;
     source.affinity = Affinity::After;
-    
+
     const Node* node = session_.findNodeById(visual.nodeId);
+
+    // Fallback: 如果 nodeId 找不到（patch 后节点重建），按 offset 搜索文档
     if (!node) {
+        source.offset = visual.textOffset;
         return source;
     }
 
-    // For a simple map, textOffset inside the DOM node usually corresponds to the length of the string without markers.
-    // If we assume EditorProjection maps cleanly, we can approximate source offset by adding textOffset to node's contentRange start.
-    // In a fully robust implementation, we would subtract marker lengths.
-    // For now, we will provide a basic offset calculation.
-    
-    // In many nodes, literal is populated or contentRange is tight.
-    // If visual textOffset is 0, it's at the start of the content range.
-    if (node->type == NodeType::Text || node->type == NodeType::CodeBlock) {
-        source.offset = node->range.begin.offset + visual.textOffset;
-    } else {
-        // For container nodes (like Paragraph), if it has text nodes, the UI usually targets the text nodes.
-        // If the UI targets the Paragraph node with an offset, it might be the Nth child.
-        // As a fallback, we use contentRange or range start.
-        source.offset = node->contentRange.begin.offset + visual.textOffset;
+    std::size_t base = visualBase(*node);
+    source.offset = base + visual.textOffset;
+
+    if (source.offset > visualEnd(*node)) {
+        source.offset = visualEnd(*node);
     }
-    
-    // Cap to end
-    if (source.offset > node->contentRange.end.offset) {
-        source.offset = node->contentRange.end.offset;
+    if (source.offset < node->range.begin.offset) {
+        source.offset = node->range.begin.offset;
     }
-    
+
     return source;
 }
 
 VisualPosition SelectionMap::sourceToVisual(const SourcePositionEx& source) const {
     VisualPosition visual;
     visual.nodeId = source.contextNodeId;
-    
+
     const Node* node = session_.findNodeById(source.contextNodeId);
     if (!node) {
+        visual.textOffset = source.offset;
         return visual;
     }
-    
-    // Inverse of visualToSource
-    if (node->type == NodeType::Text || node->type == NodeType::CodeBlock) {
-        if (source.offset >= node->range.begin.offset) {
-            visual.textOffset = source.offset - node->range.begin.offset;
-        }
-    } else {
-        if (source.offset >= node->contentRange.begin.offset) {
-            visual.textOffset = source.offset - node->contentRange.begin.offset;
-        }
+
+    std::size_t base = visualBase(*node);
+    if (source.offset >= base) {
+        visual.textOffset = source.offset - base;
     }
-    
+    if (visual.textOffset > visualEnd(*node) - base) {
+        visual.textOffset = visualEnd(*node) - base;
+    }
+
     return visual;
 }
 

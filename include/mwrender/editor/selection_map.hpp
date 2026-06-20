@@ -3,9 +3,9 @@
 #include <string>
 #include <cstddef>
 
-#include <mwrender/editor/document_session.hpp>
-
 namespace mwrender::editor {
+
+class DocumentSession;
 
 enum class Affinity {
     Before,

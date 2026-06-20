@@ -1,5 +1,7 @@
 #include <mwrender/editor/document_session.hpp>
+#include <mwrender/editor/edit_command.hpp>
 #include <mwrender/editor/node_id_registry.hpp>
+#include <mwrender/editor/selection_map.hpp>
 #include <functional>
 #include <string_view>
 
@@ -42,6 +44,7 @@ void DocumentSession::load(std::string markdown) {
     nodeMap_.clear();
     if (document_) {
         buildNodeMap(*document_);
+        blockIndex_.rebuild(*document_);
     }
 }
 
@@ -65,11 +68,88 @@ UpdateResult DocumentSession::applyChange(const TextChange& change) {
         return result; // Invalid change
     }
 
+    // Save old node info before text change for Phase 2 matching
+    std::string phase2NodeId;
+    if (options_.enableIncrementalParsing && document_) {
+        const Node* oldNode = findNodeAtOffset(change.from);
+        if (oldNode) phase2NodeId = oldNode->id;
+    }
+
     // Apply the text change
     markdown_.replace(change.from, change.to - change.from, change.insertedText);
     revision_++;
     result.revision = revision_;
 
+    // Phase 2: Fast path for simple block edits — parse only the affected block
+    if (options_.enableIncrementalParsing && document_ && !phase2NodeId.empty()) {
+        blockIndex_.rebuild(*document_);
+        SourceRange affected = blockIndex_.affectedRangeForChange(change);
+        const auto& allBlocks = blockIndex_.blocks();
+        bool isFullDoc = (!allBlocks.empty() &&
+                          affected.begin.offset == allBlocks[0].range.begin.offset &&
+                          affected.end.offset == allBlocks[0].range.end.offset);
+
+        if (!isFullDoc) {
+            std::string fragment = markdown_.substr(
+                affected.begin.offset,
+                affected.end.offset - affected.begin.offset);
+
+            auto fragResult = engine_.parseFragment(fragment, NodeType::Paragraph,
+                                                     options_.parseOptions);
+            if (fragResult.ok && fragResult.document &&
+                !fragResult.document->children.empty()) {
+
+                auto newBlock = std::move(fragResult.document->children[0]);
+                // Adjust fragment-relative offsets to document-absolute offsets
+                auto shiftRanges = [&](Node& n, auto& self) -> void {
+                    n.range.begin.offset = affected.begin.offset + n.range.begin.offset;
+                    n.range.end.offset = affected.begin.offset + n.range.end.offset;
+                    if (n.contentRange.begin.offset != 0 || n.contentRange.end.offset != 0) {
+                        n.contentRange.begin.offset = affected.begin.offset + n.contentRange.begin.offset;
+                        n.contentRange.end.offset = affected.begin.offset + n.contentRange.end.offset;
+                    }
+                    for (auto& mr : n.markerRanges) {
+                        mr.begin.offset = affected.begin.offset + mr.begin.offset;
+                        mr.end.offset = affected.begin.offset + mr.end.offset;
+                    }
+                    for (auto& c : n.children) {
+                        if (c) self(*c, self);
+                    }
+                };
+                shiftRanges(*newBlock, shiftRanges);
+
+                // Find the old node by ID in the mutable tree and replace
+                std::function<bool(Node&)> replacer = [&](Node& n) -> bool {
+                    for (auto& c : n.children) {
+                        if (c && c->id == phase2NodeId) {
+                            NodeIdRegistry registry;
+                            registry.inheritIds(*c, *newBlock);
+                            computeContentHashes(*newBlock, markdown_);
+                            std::string inheritedId = newBlock->id;
+                            c = std::move(newBlock);
+                            nodeMap_.clear();
+                            buildNodeMap(*document_);
+                            blockIndex_.rebuild(*document_);
+
+                            result.changedNodeIds.push_back(inheritedId);
+                            result.revision = revision_;
+                            result.fullReparse = false;
+                            result.ok = true;
+                            return true;
+                        }
+                        if (c && replacer(*c)) return true;
+                    }
+                    return false;
+                };
+
+                if (replacer(*document_)) {
+                    return result;
+                }
+            }
+        }
+    }
+
+    // Fallback: full re-parse (existing Phase 1 logic)
     result.fullReparse = true;
 
     ParseResult parseResult = engine_.parse(markdown_, options_.parseOptions);
@@ -112,10 +192,82 @@ UpdateResult DocumentSession::applyChange(const TextChange& change) {
     nodeMap_.clear();
     if (document_) {
         buildNodeMap(*document_);
+        blockIndex_.rebuild(*document_);
+
+        // Phase 1 incremental: filter results to only affected range
+        SourceRange affected = blockIndex_.affectedRangeForChange(change);
+        const auto& allBlocks = blockIndex_.blocks();
+        bool isFullDoc = (!allBlocks.empty() &&
+                          affected.begin.offset == allBlocks[0].range.begin.offset &&
+                          affected.end.offset == allBlocks[0].range.end.offset);
+
+        if (!isFullDoc) {
+            auto filterInRange = [&](const std::vector<std::string>& ids) {
+                std::vector<std::string> filtered;
+                for (const auto& id : ids) {
+                    const BlockEntry* be = blockIndex_.blockById(id);
+                    if (be && be->range.begin.offset >= affected.begin.offset
+                          && be->range.end.offset <= affected.end.offset) {
+                        filtered.push_back(id);
+                    }
+                }
+                return filtered;
+            };
+
+            result.changedNodeIds = filterInRange(result.changedNodeIds);
+            result.insertedNodeIds = filterInRange(result.insertedNodeIds);
+            result.removedNodeIds = filterInRange(result.removedNodeIds);
+
+            if (result.changedNodeIds.size() <= 1 &&
+                result.insertedNodeIds.empty() &&
+                result.removedNodeIds.empty()) {
+                result.fullReparse = false;
+            } else {
+                result.fallbackReason = "cross-block change requires full re-parse";
+            }
+        } else {
+            result.fallbackReason = "affected range covers entire document";
+        }
     }
 
     result.ok = (document_ != nullptr);
     return result;
+}
+
+UpdateResult DocumentSession::applyCommand(const EditCommand& command) {
+    UpdateResult result;
+    result.revision = revision_;
+
+    SelectionMap selMap(*this);
+    EditCommandExecutor executor(*this, selMap);
+    auto cmdResult = executor.execute(command);
+    if (!cmdResult.ok) {
+        return result;
+    }
+
+    const auto& oldMd = markdown_;
+    const auto& newMd = cmdResult.markdown;
+
+    std::size_t diffStart = 0;
+    while (diffStart < oldMd.size() && diffStart < newMd.size() &&
+           oldMd[diffStart] == newMd[diffStart]) {
+        diffStart++;
+    }
+
+    std::size_t oldEnd = oldMd.size();
+    std::size_t newEnd = newMd.size();
+    while (oldEnd > diffStart && newEnd > diffStart &&
+           oldMd[oldEnd - 1] == newMd[newEnd - 1]) {
+        oldEnd--;
+        newEnd--;
+    }
+
+    TextChange change;
+    change.from = diffStart;
+    change.to = oldEnd;
+    change.insertedText = newMd.substr(diffStart, newEnd - diffStart);
+
+    return applyChange(change);
 }
 
 const Node* DocumentSession::findNodeById(std::string_view nodeId) const {

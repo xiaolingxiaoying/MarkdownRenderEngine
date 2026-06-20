@@ -13,7 +13,11 @@
 #include <mwrender/incremental.hpp>
 #include <mwrender/options.hpp>
 
+#include <mwrender/editor/block_index.hpp>
+
 namespace mwrender::editor {
+
+struct EditCommand;
 
 struct DocumentSessionOptions {
     ParseOptions parseOptions;
@@ -25,6 +29,7 @@ struct DocumentSessionOptions {
 struct UpdateResult {
     bool ok = false;
     bool fullReparse = false;
+    std::string fallbackReason;
     std::size_t revision = 0;
     std::vector<Diagnostic> diagnostics;
     std::vector<std::string> changedNodeIds;
@@ -47,6 +52,7 @@ public:
     [[nodiscard]] std::size_t revision() const;
 
     UpdateResult applyChange(const TextChange& change);
+    UpdateResult applyCommand(const EditCommand& command);
 
     [[nodiscard]] const Node* findNodeById(std::string_view nodeId) const;
     [[nodiscard]] const Node* findNodeAtOffset(std::size_t sourceOffset) const;
@@ -63,6 +69,7 @@ private:
     std::size_t revision_ = 0;
 
     std::unordered_map<std::string, const Node*> nodeMap_;
+    BlockIndex blockIndex_;
 };
 
 } // namespace mwrender::editor

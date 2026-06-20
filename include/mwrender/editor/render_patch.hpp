@@ -9,10 +9,13 @@
 #include <mwrender/editor/editor_projection.hpp>
 
 #include <mwrender/editor/document_session.hpp>
+#include <mwrender/editor/edit_command.hpp>
 
 namespace mwrender::editor {
 
 struct RenderPatch {
+    std::size_t revision = 0;
+    Selection selection;
     std::vector<std::string> removedNodeIds;
     
     struct HtmlSnippet {
@@ -32,7 +35,8 @@ public:
 
     RenderPatch generatePatch(
         const Node& document,
-        const UpdateResult& parseResult
+        const UpdateResult& parseResult,
+        const Selection& newSelection = {}
     ) const;
 
 private:

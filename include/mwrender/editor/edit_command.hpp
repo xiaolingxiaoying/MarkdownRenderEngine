@@ -5,7 +5,10 @@
 #include <optional>
 
 #include <mwrender/editor/selection_map.hpp>
-#include <mwrender/editor/document_session.hpp>
+
+namespace mwrender::editor {
+class DocumentSession;
+}
 
 namespace mwrender::editor {
 
@@ -17,7 +20,14 @@ enum class EditCommandType {
     MergeBlock,
     ToggleStrong,
     ToggleEmphasis,
+    ToggleInlineCode,
+    ToggleStrikethrough,
     ToggleTask,
+    InsertLink,
+    InsertImage,
+    ToggleList,
+    IndentListItem,
+    OutdentListItem,
     SetHeadingLevel
 };
 

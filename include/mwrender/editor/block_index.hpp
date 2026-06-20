@@ -34,6 +34,8 @@ public:
 private:
     void traverse(const Node& node, std::size_t currentDepth);
     bool isBlockNode(NodeType type) const;
+    [[nodiscard]] SourceRange findParentRange(const BlockEntry* child, NodeType parentType) const;
+    [[nodiscard]] NodeType commonContainerType(const BlockEntry* a, const BlockEntry* b) const;
 
     std::vector<BlockEntry> blocks_;
 };

@@ -11,6 +11,7 @@
 #include <mwrender/embed_highlight_js.hpp>
 #include <mwrender/embed_mathjax_js.hpp>
 #include <mwrender/embed_mermaid_js.hpp>
+#include <mwrender/editor/editor_projection.hpp>
 #include "support/document_text.hpp"
 
 namespace mwrender::detail {
@@ -393,6 +394,11 @@ private:
         if (options.renderMode == RenderMode::EditorView && !node.id.empty()) {
             output += " data-node-id=\"";
             output += node.id;
+            output += '"';
+            using mwrender::editor::EditorProjection;
+            auto edit = EditorProjection::classifyNode(node);
+            output += " data-editable=\"";
+            output += EditorProjection::editabilityName(edit);
             output += '"';
         }
         output += " data-source-line=\"";

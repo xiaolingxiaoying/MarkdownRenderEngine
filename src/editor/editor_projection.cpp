@@ -3,6 +3,54 @@
 
 namespace mwrender::editor {
 
+Editability EditorProjection::classifyNode(const Node& node) {
+    switch (node.type) {
+        case NodeType::Paragraph:
+        case NodeType::Heading:
+        case NodeType::Text:
+        case NodeType::SoftBreak:
+        case NodeType::HardBreak:
+            return Editability::Editable;
+
+        case NodeType::Strong:
+        case NodeType::Emphasis:
+        case NodeType::Strikethrough:
+        case NodeType::InlineCode:
+        case NodeType::Link:
+        case NodeType::Image:
+        case NodeType::AutoLink:
+        case NodeType::MathInline:
+        case NodeType::FootnoteRef:
+            return Editability::SourceEditable;
+
+        case NodeType::CodeBlock:
+        case NodeType::MathBlock:
+        case NodeType::HtmlBlock:
+        case NodeType::HtmlInline:
+        case NodeType::Table:
+        case NodeType::TableHead:
+        case NodeType::TableBody:
+        case NodeType::TableRow:
+        case NodeType::TableCell:
+        case NodeType::FootnoteDef:
+        case NodeType::FrontMatter:
+        case NodeType::Toc:
+            return Editability::Atomic;
+
+        default:
+            return Editability::Atomic;
+    }
+}
+
+const char* EditorProjection::editabilityName(Editability e) {
+    switch (e) {
+        case Editability::Editable:       return "editable";
+        case Editability::SourceEditable: return "source-editable";
+        case Editability::Atomic:         return "atomic";
+    }
+    return "atomic";
+}
+
 EditorProjection::EditorProjection(const Engine& engine)
     : engine_(engine) {}
 

@@ -27,9 +27,12 @@ bool findParentAndIndex(const Node& current, const std::string& targetId, std::s
 
 RenderPatch RenderPatchGenerator::generatePatch(
     const Node& document,
-    const UpdateResult& parseResult
+    const UpdateResult& parseResult,
+    const Selection& newSelection
 ) const {
     RenderPatch patch;
+    patch.revision = parseResult.revision;
+    patch.selection = newSelection;
     patch.removedNodeIds = parseResult.removedNodeIds;
 
     for (const auto& id : parseResult.changedNodeIds) {

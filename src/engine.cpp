@@ -165,15 +165,22 @@ ParseResult Engine::parse(
 IncrementalParseResult Engine::update(
     const Node& oldDocument,
     const TextChange& change) const {
+    return update(oldDocument, oldDocument.literal, change);
+}
+
+IncrementalParseResult Engine::update(
+    const Node& oldDocument,
+    std::string_view oldMarkdown,
+    const TextChange& change) const {
     IncrementalParseResult result;
 
-    std::string newMarkdown = oldDocument.literal;
-    if (!newMarkdown.empty()) {
-        newMarkdown.replace(change.from, change.to - change.from,
-                            change.insertedText);
-    } else {
-        newMarkdown = change.insertedText;
+    if (change.from > change.to || change.to > oldMarkdown.size()) {
+        return result;
     }
+
+    std::string newMarkdown(oldMarkdown);
+    newMarkdown.replace(change.from, change.to - change.from,
+                        change.insertedText);
 
     auto parseResult = impl_->parser.parse(
         newMarkdown, ParseOptions{});
@@ -186,7 +193,7 @@ IncrementalParseResult Engine::update(
                           auto& ref) -> void {
         if (!node.id.empty()) ids.push_back(node.id);
         for (const auto& child : node.children) {
-            ref(*child, ids, ref);
+            if (child) ref(*child, ids, ref);
         }
     };
     collectIds(oldDocument, oldIds, collectIds);
@@ -207,11 +214,6 @@ IncrementalParseResult Engine::update(
                         sortedNew.begin(), sortedNew.end(),
                         std::back_inserter(result.removedNodeIds));
 
-    for (const auto& id : sortedNew) {
-        if (!std::binary_search(sortedOld.begin(), sortedOld.end(), id)) {
-            continue;
-        }
-    }
     std::unordered_map<std::string, std::string> oldHashes;
     auto collectHashes = [](const Node& node, std::unordered_map<std::string, std::string>& map, auto& ref) -> void {
         if (!node.id.empty()) map[node.id] = node.contentHash;
@@ -236,6 +238,27 @@ IncrementalParseResult Engine::update(
     result.document = std::move(parseResult.document);
     result.diagnostics = std::move(parseResult.diagnostics);
     return result;
+}
+
+ParseResult Engine::parseFragment(
+    std::string_view fragment,
+    NodeType expectedType,
+    const ParseOptions& options) const {
+    // For simple block types, the fragment can be parsed directly.
+    // Wrap with a trailing newline to ensure proper block termination.
+    std::string wrapped(fragment);
+    if (wrapped.empty() || wrapped.back() != '\n') {
+        wrapped += '\n';
+    }
+    // Ensure blank line separation for blocks that need it
+    if (expectedType == NodeType::Paragraph ||
+        expectedType == NodeType::Heading ||
+        expectedType == NodeType::ThematicBreak) {
+        if (wrapped.size() < 2 || wrapped.substr(wrapped.size() - 2) != "\n\n") {
+            wrapped += '\n';
+        }
+    }
+    return impl_->parser.parse(wrapped, options);
 }
 
 RenderResult Engine::renderNode(const NodeRenderRequest& request) const {

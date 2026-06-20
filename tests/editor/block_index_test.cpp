@@ -69,12 +69,67 @@ void testAffectedRangeForChange(mwrender::Engine& engine) {
     require(paraBlock != nullptr, "paraBlock found");
     require(rangePara == paraBlock->range, "Change in paragraph affects only paragraph");
 
-    // Change inside List (which falls back to document or list, currently Document fallback if not in safe block)
+    // Change inside ListItem — returns parent List range
     mwrender::TextChange changeList;
-    changeList.from = 20;
-    changeList.to = 20;
+    changeList.from = 22;
+    changeList.to = 22;
     auto rangeList = index.affectedRangeForChange(changeList);
-    require(rangeList.begin.offset == 0, "Change in list falls back to document range (for now)");
+    // Should no longer fall back to document range: ListItem returns parent List range
+    require(rangeList.begin.offset > 0, "Change in list item returns parent List range, not document");
+}
+
+void testAffectedRangeForChangeInList(mwrender::Engine& engine) {
+    const std::string markdown = "- item one\n- item two\n";
+    auto parseResult = engine.parse(markdown);
+
+    mwrender::editor::BlockIndex index;
+    index.rebuild(*parseResult.document);
+
+    // Find the List block (not ListItem) by scanning types
+    const mwrender::editor::BlockEntry* listBlock = nullptr;
+    for (const auto& b : index.blocks()) {
+        if (b.type == mwrender::NodeType::List) {
+            listBlock = &b;
+            break;
+        }
+    }
+    require(listBlock != nullptr, "List block found");
+
+    // Verify ListItem exists
+    const auto* item2 = index.blockAtOffset(12);
+    require(item2 != nullptr, "Block found at offset 12");
+    require(item2->type == mwrender::NodeType::ListItem, "Block at offset 12 is ListItem");
+
+    // Change inside second item
+    mwrender::TextChange change;
+    change.from = 12;
+    change.to = 12;
+    auto range = index.affectedRangeForChange(change);
+    // ListItem returns parent List range
+    require(range.begin.offset == listBlock->range.begin.offset,
+            "ListItem change returns parent List range start");
+    require(range.end.offset == listBlock->range.end.offset,
+            "ListItem change returns parent List range end");
+}
+
+void testBlockQuoteAffectedRange(mwrender::Engine& engine) {
+    const std::string markdown = "> quoted text\n\n> second quote\n";
+    auto parseResult = engine.parse(markdown);
+
+    mwrender::editor::BlockIndex index;
+    index.rebuild(*parseResult.document);
+
+    // Find the BlockQuote block
+    const mwrender::editor::BlockEntry* quoteBlock = nullptr;
+    for (const auto& b : index.blocks()) {
+        if (b.type == mwrender::NodeType::BlockQuote) {
+            quoteBlock = &b;
+            break;
+        }
+    }
+    require(quoteBlock != nullptr, "BlockQuote found");
+    require(quoteBlock->range.begin.offset < quoteBlock->range.end.offset,
+            "BlockQuote has valid range");
 }
 
 } // namespace
@@ -88,6 +143,8 @@ int main() {
     testBlockIndexBuilding(engine);
     testBlockAtOffset(engine);
     testAffectedRangeForChange(engine);
+    testAffectedRangeForChangeInList(engine);
+    testBlockQuoteAffectedRange(engine);
 
     std::cout << "All block_index tests passed.\n";
     return 0;

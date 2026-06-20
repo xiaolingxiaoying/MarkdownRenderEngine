@@ -210,6 +210,17 @@ if(BUILD_TESTING AND MWRENDER_BUILD_TESTS)
     target_link_libraries(mwrender_edit_command_tests PRIVATE MWRender::Core)
     add_test(NAME mwrender.editor.command COMMAND mwrender_edit_command_tests)
 
+    add_executable(mwrender_unicode_tests tests/editor/unicode_test.cpp)
+    target_compile_features(mwrender_unicode_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_unicode_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.unicode COMMAND mwrender_unicode_tests)
+
+    add_executable(mwrender_large_doc_tests tests/editor/large_document_test.cpp)
+    target_compile_features(mwrender_large_doc_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_large_doc_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.large COMMAND mwrender_large_doc_tests)
+    set_tests_properties(mwrender.editor.large PROPERTIES TIMEOUT 120)
+
     add_executable(mwrender_serializer_tests tests/serializer/serializer_test.cpp)
     target_link_libraries(mwrender_serializer_tests PRIVATE mwrender_core)
     add_test(NAME mwrender.serializer.preserve COMMAND mwrender_serializer_tests)

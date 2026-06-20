@@ -36,21 +36,96 @@ SourceRange BlockIndex::affectedRangeForChange(const TextChange& change) const {
     const BlockEntry* startBlock = blockAtOffset(change.from);
     const BlockEntry* endBlock = blockAtOffset(change.to);
 
+    if (!startBlock) {
+        if (!blocks_.empty()) return blocks_[0].range;
+        return SourceRange{};
+    }
+
     if (startBlock && endBlock && startBlock->nodeId == endBlock->nodeId) {
-        // Simple case: change is completely within one block
         NodeType t = startBlock->type;
-        if (t == NodeType::Paragraph || t == NodeType::Heading || t == NodeType::CodeBlock || t == NodeType::MathBlock || t == NodeType::ThematicBreak) {
+        // Simple blocks: return precise range
+        if (t == NodeType::Paragraph || t == NodeType::Heading ||
+            t == NodeType::CodeBlock || t == NodeType::MathBlock ||
+            t == NodeType::ThematicBreak || t == NodeType::HtmlBlock) {
+            return startBlock->range;
+        }
+        // ListItem: find parent List for safe re-parse
+        if (t == NodeType::ListItem) {
+            return findParentRange(startBlock, NodeType::List);
+        }
+        // BlockQuote: return BlockQuote range
+        if (t == NodeType::BlockQuote) {
+            return startBlock->range;
+        }
+        // List: return List range
+        if (t == NodeType::List) {
             return startBlock->range;
         }
     }
 
-    // Fallback: entire document range. 
-    // If blocks_ is not empty, block 0 is usually the Document node itself.
+    // Cross-block change: merge start and end ranges if possible
+    if (startBlock && endBlock) {
+        // Find a common ancestor container
+        NodeType container = commonContainerType(startBlock, endBlock);
+        if (container == NodeType::List || container == NodeType::BlockQuote) {
+            // Find the container block that covers both start and end
+            for (const auto& b : blocks_) {
+                if (b.type == container &&
+                    b.range.begin.offset <= startBlock->range.begin.offset &&
+                    b.range.end.offset >= endBlock->range.end.offset) {
+                    return b.range;
+                }
+            }
+        }
+        // Start block to end block combined range
+        SourceRange merged;
+        merged.begin = startBlock->range.begin;
+        merged.end = endBlock->range.end;
+        return merged;
+    }
+
+    // Fallback: entire document range
     if (!blocks_.empty()) {
         return blocks_[0].range;
     }
-    
+
     return SourceRange{};
+}
+
+SourceRange BlockIndex::findParentRange(const BlockEntry* child, NodeType parentType) const {
+    if (!child || blocks_.empty()) {
+        return SourceRange{};
+    }
+    // Scan backwards from child to find the nearest ancestor of the given type
+    // The child is at some depth; we look for a block at a lower depth.
+    for (auto it = blocks_.rbegin(); it != blocks_.rend(); ++it) {
+        if (it->nodeId == child->nodeId) continue;
+        if (it->type == parentType && it->depth < child->depth &&
+            it->range.begin.offset <= child->range.begin.offset &&
+            it->range.end.offset >= child->range.end.offset) {
+            return it->range;
+        }
+    }
+    // Fallback to document range
+    return blocks_[0].range;
+}
+
+NodeType BlockIndex::commonContainerType(const BlockEntry* a, const BlockEntry* b) const {
+    if (!a || !b) return NodeType::Document;
+    // If both are at the same depth and same type, return that type
+    if (a->depth == b->depth && a->type == b->type) {
+        return a->type;
+    }
+    // Check if one is a container of the other
+    if (a->range.begin.offset <= b->range.begin.offset &&
+        a->range.end.offset >= b->range.end.offset) {
+        if (a->type == NodeType::List || a->type == NodeType::BlockQuote) return a->type;
+    }
+    if (b->range.begin.offset <= a->range.begin.offset &&
+        b->range.end.offset >= a->range.end.offset) {
+        if (b->type == NodeType::List || b->type == NodeType::BlockQuote) return b->type;
+    }
+    return NodeType::Document;
 }
 
 const std::vector<BlockEntry>& BlockIndex::blocks() const {

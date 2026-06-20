@@ -33,7 +33,15 @@ void testGeneratePatch() {
     auto result = session.applyChange(change);
     require(result.ok, "Update should succeed");
 
-    mwrender::editor::RenderPatch patch = generator.generatePatch(session.document(), result);
+    mwrender::editor::Selection sel;
+    sel.anchor.offset = 5;
+    sel.focus.offset = 5;
+    mwrender::editor::RenderPatch patch = generator.generatePatch(session.document(), result, sel);
+    
+    // Verify revision and selection are passed through
+    require(patch.revision == result.revision, "Patch carries revision from UpdateResult");
+    require(patch.selection.anchor.offset == 5, "Patch carries selection anchor");
+    require(patch.selection.focus.offset == 5, "Patch carries selection focus");
     
     // We expect exactly 1 changed node: the Paragraph
     require(!patch.changedNodes.empty(), "Should have changed nodes");

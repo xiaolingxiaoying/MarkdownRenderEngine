@@ -42,6 +42,20 @@ public:
         const Node& oldDocument,
         const TextChange& change) const;
 
+    [[nodiscard]] IncrementalParseResult update(
+        const Node& oldDocument,
+        std::string_view oldMarkdown,
+        const TextChange& change) const;
+
+    // Parse a markdown fragment. The fragment is wrapped in a full document
+    // context so the parser can correctly interpret it. The returned AST
+    // contains Document → [block] where block matches expectedType.
+    // Falls back to full parse if the fragment cannot be parsed in isolation.
+    [[nodiscard]] ParseResult parseFragment(
+        std::string_view fragment,
+        NodeType expectedType,
+        const ParseOptions& options = {}) const;
+
     [[nodiscard]] RenderResult render(const RenderRequest& request) const;
 
     [[nodiscard]] RenderResult renderNode(

@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include <mwrender/editor/document_session.hpp>
+#include <mwrender/editor/edit_command.hpp>
 
 namespace {
 
@@ -39,7 +40,7 @@ void testApplyChange(mwrender::editor::DocumentSession& session) {
     auto result = session.applyChange(change);
 
     require(result.ok, "applyChange should succeed");
-    require(result.fullReparse == true, "Stage 1 expects full reparse");
+    require(result.fullReparse == false, "Single-block edit should not trigger full reparse");
     require(result.revision == 2, "revision should increment");
     require(session.revision() == 2, "session revision should match");
     require(session.markdown() == "# Hello World\n\nThis is a paragraph.", "markdown should be updated");
@@ -76,6 +77,48 @@ void testFindNodeById(mwrender::editor::DocumentSession& session) {
     require(found == doc.children[0].get(), "findNodeById should return the correct node pointer");
 }
 
+void testApplyCommandReplaceSelection(mwrender::editor::DocumentSession& session) {
+    session.load("# Title\n\nParagraph 1\n");
+
+    mwrender::editor::EditCommand cmd;
+    cmd.type = mwrender::editor::EditCommandType::ReplaceSelection;
+    cmd.selection.anchor.offset = 19;
+    cmd.selection.focus.offset = 20;
+    cmd.text = "2";
+
+    auto result = session.applyCommand(cmd);
+    require(result.ok, "applyCommand should succeed");
+    require(result.fullReparse == false, "Single-block edit should not trigger full reparse");
+    require(result.revision == 2, "revision should increment");
+    require(session.markdown() == "# Title\n\nParagraph 2\n", "markdown should be updated");
+}
+
+void testListEditPreservesOtherIds(mwrender::editor::DocumentSession& session) {
+    session.load("- item one\n- item two\n");
+
+    const auto& doc1 = session.document();
+    const auto& list = doc1.children[0];
+    std::string oldListId = list->id;
+    std::string oldItem0Id = list->children[0]->id;
+    std::string oldItem1Id = list->children[1]->id;
+
+    // Edit "one" → "ONE"
+    std::size_t pos = session.markdown().find("one");
+    mwrender::TextChange change;
+    change.from = pos;
+    change.to = pos + 3;
+    change.insertedText = "ONE";
+
+    auto result = session.applyChange(change);
+    require(result.ok, "List edit should succeed");
+
+    const auto& doc2 = session.document();
+    const auto& list2 = doc2.children[0];
+    require(list2->id == oldListId, "List ID preserved");
+    require(list2->children[0]->id == oldItem0Id, "First item ID preserved");
+    require(list2->children[1]->id == oldItem1Id, "Second item ID preserved");
+}
+
 } // namespace
 
 int main() {
@@ -98,6 +141,14 @@ int main() {
     {
         mwrender::editor::DocumentSession session(options);
         testFindNodeById(session);
+    }
+    {
+        mwrender::editor::DocumentSession session(options);
+        testApplyCommandReplaceSelection(session);
+    }
+    {
+        mwrender::editor::DocumentSession session(options);
+        testListEditPreservesOtherIds(session);
     }
 
     std::cout << "All document_session tests passed.\n";
