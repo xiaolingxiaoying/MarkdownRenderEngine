@@ -745,6 +745,7 @@ void testEngineParseApiReturnsAllDiagnostics(mwrender::Engine& engine) {
 void testSerializeEmphasisStyle(mwrender::Engine& engine) {
     mwrender::MarkdownStyle style;
     style.emphasisMarker = "_";
+    style.preserveOriginalMarkers = false;
 
     auto result = engine.parse("*italic*\n");
     require(result.ok, "parse should succeed");

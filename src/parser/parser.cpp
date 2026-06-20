@@ -343,9 +343,17 @@ std::unique_ptr<Node> makeInlineContainer(
     std::size_t markerWidth,
     std::size_t sourceStart,
     const SourcePosition& base,
-    const MarkdownExtensions& extensions) {
+    const MarkdownExtensions& extensions,
+    char markerChar = '*') {
     auto node = std::make_unique<Node>();
     node->type = type;
+    if (type == NodeType::Strong) {
+        node->payload = StrongData{markerChar, std::string(markerWidth, markerChar)};
+    } else if (type == NodeType::Emphasis) {
+        node->payload = EmphasisData{markerChar, std::string(markerWidth, markerChar)};
+    } else if (type == NodeType::Strikethrough) {
+        node->payload = StrikethroughData{'~'};
+    }
     auto fullStart = base.offset + sourceStart;
     auto fullEnd = base.offset + sourceStart + content.size() + markerWidth * 2;
     node->range = makeRange(
@@ -571,7 +579,8 @@ std::vector<std::unique_ptr<Node>> parseInline(
                     2,
                     index,
                     base,
-                    extensions));
+                    extensions,
+                    '~'));
                 index = close + 2;
                 continue;
             }
@@ -591,6 +600,7 @@ std::vector<std::unique_ptr<Node>> parseInline(
                 if (count == 3) {
                     auto strongNode = std::make_unique<Node>();
                     strongNode->type = NodeType::Strong;
+                    strongNode->payload = StrongData{marker, std::string(2, marker)};
                     strongNode->range = rangeFor(index, close + 3);
                     strongNode->contentRange = rangeFor(index + 3, close);
                     strongNode->markerRanges.push_back(rangeFor(index, index + 3));
@@ -599,6 +609,7 @@ std::vector<std::unique_ptr<Node>> parseInline(
                     
                     auto emNode = std::make_unique<Node>();
                     emNode->type = NodeType::Emphasis;
+                    emNode->payload = EmphasisData{marker, std::string(1, marker)};
                     emNode->range = rangeFor(index + 1, close + 2);
                     emNode->contentRange = rangeFor(index + 3, close);
                     emNode->markerRanges.push_back(rangeFor(index + 1, index + 3));
@@ -621,7 +632,8 @@ std::vector<std::unique_ptr<Node>> parseInline(
                         count,
                         index,
                         base,
-                        extensions));
+                        extensions,
+                        marker));
                     index = close + count;
                     continue;
                 }
@@ -828,6 +840,7 @@ struct ListMarker {
     bool ordered = false;
     std::uint64_t start = 1;
     std::size_t contentOffset = 0;
+    std::string markerString;
 };
 
 std::optional<ListMarker> matchListMarker(std::string_view line) {
@@ -846,7 +859,7 @@ std::optional<ListMarker> matchListMarker(std::string_view line) {
         while (content < line.size() && isAsciiSpace(line[content])) {
             ++content;
         }
-        return ListMarker{false, 1, content};
+        return ListMarker{false, 1, content, std::string(1, line[indent])};
     }
 
     std::size_t digitEnd = indent;
@@ -871,7 +884,7 @@ std::optional<ListMarker> matchListMarker(std::string_view line) {
     while (content < line.size() && isAsciiSpace(line[content])) {
         ++content;
     }
-    return ListMarker{true, start, content};
+    return ListMarker{true, start, content, std::string(line.substr(digitEnd, 1))};
 }
 
 std::vector<std::string> splitTableRow(std::string_view line) {
@@ -1305,6 +1318,7 @@ std::unique_ptr<Node> makeDocument(
             node->payload = CodeBlockData{
                 std::string(info),
                 std::string(info.substr(0, languageEnd)),
+                std::string(fence->length, fence->marker)
             };
             node->literal = std::move(literal);
             document->children.push_back(std::move(node));
@@ -1437,7 +1451,7 @@ std::unique_ptr<Node> makeDocument(
             auto list = std::make_unique<Node>();
             list->type = NodeType::List;
             list->payload =
-                ListData{firstMarker->ordered, firstMarker->start, true};
+                ListData{firstMarker->ordered, firstMarker->start, true, firstMarker->markerString};
             const std::size_t startIndex = lineIndex;
 
             while (lineIndex < lines.size()) {
@@ -1448,42 +1462,106 @@ std::unique_ptr<Node> makeDocument(
                 const Line& itemLine = lines[lineIndex];
                 auto item = std::make_unique<Node>();
                 item->type = NodeType::ListItem;
+                
+                auto itemContentStr = itemLine.text.substr(marker->contentOffset);
+                std::size_t markerEnd = marker->contentOffset;
+                
+                ListItemData itemData;
+                if (extensions.taskLists &&
+                    itemContentStr.size() >= 3 &&
+                    itemContentStr[0] == '[' &&
+                    itemContentStr[2] == ']' &&
+                    (itemContentStr[1] == ' ' || itemContentStr[1] == 'x' || itemContentStr[1] == 'X')) {
+                    itemData.task = true;
+                    itemData.checked = itemContentStr[1] == 'x' || itemContentStr[1] == 'X';
+                    itemData.taskMarker = std::string(itemContentStr.substr(0, 3));
+                    itemContentStr.remove_prefix(3);
+                    markerEnd += 3;
+                    if (!itemContentStr.empty() && itemContentStr.front() == ' ') {
+                        itemContentStr.remove_prefix(1);
+                        markerEnd += 1;
+                    }
+                }
+                item->payload = itemData;
+
+                std::vector<Line> itemLines;
+                Line firstChildLine = itemLine;
+                firstChildLine.text = firstChildLine.text.substr(markerEnd);
+                firstChildLine.startOffset += markerEnd;
+                itemLines.push_back(firstChildLine);
+                
+                ++lineIndex;
+                
+                std::size_t indentLevel = marker->contentOffset;
+                
+                while (lineIndex < lines.size()) {
+                    const Line& currentLine = lines[lineIndex];
+                    auto stripped = trimLeft(currentLine.text);
+                    if (stripped.empty()) {
+                        itemLines.push_back(currentLine);
+                        ++lineIndex;
+                        continue;
+                    }
+                    
+                    std::size_t currentIndent = currentLine.text.size() - stripped.size();
+                    if (currentIndent >= indentLevel) {
+                        Line childLine = currentLine;
+                        childLine.text = childLine.text.substr(indentLevel);
+                        childLine.startOffset += indentLevel;
+                        itemLines.push_back(childLine);
+                        ++lineIndex;
+                    } else {
+                        bool prevBlank = itemLines.empty() || trimLeft(itemLines.back().text).empty();
+                        if (prevBlank) {
+                            break;
+                        }
+
+                        const auto nextMarker = matchListMarker(currentLine.text);
+                        if (nextMarker && nextMarker->ordered == firstMarker->ordered) {
+                            break;
+                        }
+                        
+                        if (matchHeading(currentLine.text) || matchFence(currentLine.text) || isThematicBreak(currentLine.text) || (!trimLeft(currentLine.text).empty() && trimLeft(currentLine.text).front() == '>')) {
+                            break;
+                        }
+                        
+                        // Treat as paragraph continuation if not a marker
+                        // This is a simplified fallback for lazy paragraph continuation
+                        itemLines.push_back(currentLine);
+                        ++lineIndex;
+                    }
+                }
+                
+                // Remove trailing empty lines from itemLines
+                while (!itemLines.empty() && trimLeft(itemLines.back().text).empty()) {
+                    --lineIndex;
+                    itemLines.pop_back();
+                }
+                
+                if (!itemLines.empty()) {
+                    auto innerDoc = makeDocument(
+                        source, itemLines, diagnostics, metadata, extensions, maxNestingDepth, currentDepth + 1, false);
+                    for (auto& child : innerDoc->children) {
+                        item->children.push_back(std::move(child));
+                    }
+                }
+                
+                const Line& lastItemLine = itemLines.empty() ? itemLine : itemLines.back();
+                
                 item->range = makeRange(
                     itemLine.startOffset,
                     itemLine.number,
                     1,
-                    itemLine.endOffset,
-                    itemLine.number,
-                    static_cast<std::uint32_t>(itemLine.text.size() + 1));
-                auto itemContent =
-                    itemLine.text.substr(marker->contentOffset);
-                ListItemData itemData;
-                std::size_t markerEnd = marker->contentOffset;
-                if (extensions.taskLists &&
-                    itemContent.size() >= 3 &&
-                    itemContent[0] == '[' &&
-                    itemContent[2] == ']' &&
-                    (itemContent[1] == ' ' ||
-                     itemContent[1] == 'x' ||
-                     itemContent[1] == 'X')) {
-                    itemData.task = true;
-                    itemData.checked =
-                        itemContent[1] == 'x' || itemContent[1] == 'X';
-                    itemContent.remove_prefix(3);
-                    markerEnd += 3;
-                    if (!itemContent.empty() && itemContent.front() == ' ') {
-                        itemContent.remove_prefix(1);
-                        markerEnd += 1;
-                    }
-                    item->payload = itemData;
-                }
+                    lastItemLine.endOffset,
+                    lastItemLine.number,
+                    static_cast<std::uint32_t>(lastItemLine.text.size() + 1));
                 item->contentRange = makeRange(
                     itemLine.startOffset + markerEnd,
                     itemLine.number,
                     static_cast<std::uint32_t>(markerEnd + 1),
-                    itemLine.endOffset,
-                    itemLine.number,
-                    static_cast<std::uint32_t>(itemLine.text.size() + 1));
+                    lastItemLine.endOffset,
+                    lastItemLine.number,
+                    static_cast<std::uint32_t>(lastItemLine.text.size() + 1));
                 item->markerRanges.push_back(makeRange(
                     itemLine.startOffset,
                     itemLine.number,
@@ -1503,18 +1581,7 @@ std::unique_ptr<Node> makeDocument(
                 item->id = generateStableId(
                     itemData.task ? NodeType::ListItem : NodeType::ListItem,
                     item->range);
-                item->children.push_back(makeSyntheticParagraph(
-                    std::string(itemContent),
-                    makeRange(
-                        itemLine.startOffset + markerEnd,
-                        itemLine.number,
-                        static_cast<std::uint32_t>(markerEnd + 1),
-                        itemLine.endOffset,
-                        itemLine.number,
-                        static_cast<std::uint32_t>(itemLine.text.size() + 1)),
-                    extensions));
                 list->children.push_back(std::move(item));
-                ++lineIndex;
             }
 
             const Line& last = lines[lineIndex - 1];

@@ -13,6 +13,11 @@ struct MarkdownStyle {
     std::string emphasisMarker = "*";
     std::string codeFenceMarker = "```";
     std::string lineEnding = "\n";
+
+    bool preserveOriginalMarkers = true;
+    bool preserveBlankLines = true;
+    bool preserveListStartNumber = true;
+    bool preserveTaskMarkerCase = true;
 };
 
 struct Command {

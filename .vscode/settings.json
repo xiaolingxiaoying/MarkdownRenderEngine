@@ -1,5 +1,5 @@
 {
-  "clangd.path": "C:/Program Files/clangd/bin/clangd.exe",
+  // "clangd.path": "C:/Program Files/clangd/bin/clangd.exe",
   "clangd.arguments": [
     "--query-driver=C:/Program Files/mingw64/bin/g++.exe",
     "--background-index",

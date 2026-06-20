@@ -9,8 +9,10 @@ CompileFlags:
     - -fdiagnostics-color=*
 
 Diagnostics:
-  UnusedIncludes: Strict
-  MissingIncludes: Strict
+  # The public headers intentionally re-export several core AST types. Strict
+  # include-cleaner diagnostics are too noisy for this codebase.
+  UnusedIncludes: None
+  MissingIncludes: None
   ClangTidy:
     Add:
       - bugprone-*

@@ -11,6 +11,7 @@
 
 #include <mwrender/parser.hpp>
 #include <mwrender/query.hpp>
+#include <unordered_map>
 
 #include "analysis/document_analysis.hpp"
 #include "render/html_renderer.hpp"
@@ -211,9 +212,23 @@ IncrementalParseResult Engine::update(
             continue;
         }
     }
+    std::unordered_map<std::string, std::string> oldHashes;
+    auto collectHashes = [](const Node& node, std::unordered_map<std::string, std::string>& map, auto& ref) -> void {
+        if (!node.id.empty()) map[node.id] = node.contentHash;
+        for (const auto& child : node.children) {
+            if (child) ref(*child, map, ref);
+        }
+    };
+    collectHashes(oldDocument, oldHashes, collectHashes);
+
+    std::unordered_map<std::string, std::string> newHashes;
+    collectHashes(*parseResult.document, newHashes, collectHashes);
+
     for (const auto& oldId : oldIds) {
         if (std::find(newIds.begin(), newIds.end(), oldId) != newIds.end()) {
-            result.changedNodeIds.push_back(oldId);
+            if (oldHashes[oldId] != newHashes[oldId]) {
+                result.changedNodeIds.push_back(oldId);
+            }
         }
     }
 

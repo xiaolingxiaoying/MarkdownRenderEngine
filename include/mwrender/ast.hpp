@@ -52,16 +52,19 @@ struct ListData {
     bool ordered = false;
     std::uint64_t start = 1;
     bool tight = true;
+    std::string marker;
 };
 
 struct ListItemData {
     bool task = false;
     bool checked = false;
+    std::string taskMarker;
 };
 
 struct CodeBlockData {
     std::string info;
     std::string language;
+    std::string fenceMarker;
 };
 
 struct LinkData {
@@ -89,10 +92,12 @@ struct FootnoteData {
 
 struct EmphasisData {
     char delimiter = '*';
+    std::string marker;
 };
 
 struct StrongData {
     char delimiter = '*';
+    std::string marker;
 };
 
 struct StrikethroughData {
@@ -116,6 +121,7 @@ using NodePayload = std::variant<
 
 struct Node {
     std::string id;
+    std::string contentHash;
     NodeType type = NodeType::Document;
     SourceRange range;
     SourceRange contentRange;

@@ -85,6 +85,13 @@ add_library(mwrender_core
     src/theme/theme_manager.cpp
     src/support/document_text.cpp
     src/support/json.cpp
+    src/editor/document_session.cpp
+    src/editor/block_index.cpp
+    src/editor/node_id_registry.cpp
+    src/editor/editor_projection.cpp
+    src/editor/render_patch.cpp
+    src/editor/selection_map.cpp
+    src/editor/edit_command.cpp
 )
 add_library(MWRender::Core ALIAS mwrender_core)
 set_target_properties(mwrender_core PROPERTIES EXPORT_NAME Core)
@@ -163,12 +170,67 @@ if(BUILD_TESTING AND MWRENDER_BUILD_TESTS)
     target_link_libraries(mwrender_new_features_tests PRIVATE MWRender::Core)
     add_test(NAME mwrender.new_features COMMAND mwrender_new_features_tests)
 
+    add_executable(mwrender_editor_tests tests/editor/document_session_test.cpp)
+    target_compile_features(mwrender_editor_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_editor_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor COMMAND mwrender_editor_tests)
+
+    add_executable(mwrender_block_index_tests tests/editor/block_index_test.cpp)
+    target_compile_features(mwrender_block_index_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_block_index_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.block COMMAND mwrender_block_index_tests)
+
+    add_executable(mwrender_node_id_registry_tests tests/editor/node_id_registry_test.cpp)
+    target_compile_features(mwrender_node_id_registry_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_node_id_registry_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.node_id COMMAND mwrender_node_id_registry_tests)
+
+    add_executable(mwrender_incremental_parse_tests tests/editor/incremental_parse_test.cpp)
+    target_compile_features(mwrender_incremental_parse_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_incremental_parse_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.incremental COMMAND mwrender_incremental_parse_tests)
+
+    add_executable(mwrender_editor_projection_tests tests/editor/editor_projection_test.cpp)
+    target_compile_features(mwrender_editor_projection_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_editor_projection_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.projection COMMAND mwrender_editor_projection_tests)
+
+    add_executable(mwrender_render_patch_tests tests/editor/render_patch_test.cpp)
+    target_compile_features(mwrender_render_patch_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_render_patch_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.patch COMMAND mwrender_render_patch_tests)
+
+    add_executable(mwrender_selection_map_tests tests/editor/selection_map_test.cpp)
+    target_compile_features(mwrender_selection_map_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_selection_map_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.selection COMMAND mwrender_selection_map_tests)
+
+    add_executable(mwrender_edit_command_tests tests/editor/edit_command_test.cpp)
+    target_compile_features(mwrender_edit_command_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_edit_command_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.command COMMAND mwrender_edit_command_tests)
+
+    add_executable(mwrender_serializer_tests tests/serializer/serializer_test.cpp)
+    target_link_libraries(mwrender_serializer_tests PRIVATE mwrender_core)
+    add_test(NAME mwrender.serializer.preserve COMMAND mwrender_serializer_tests)
+
     # Phase 8: Performance benchmarks (longer timeout; not a correctness gate)
     add_executable(mwrender_benchmark tests/benchmark.cpp)
     target_compile_features(mwrender_benchmark PRIVATE cxx_std_20)
     target_link_libraries(mwrender_benchmark PRIVATE MWRender::Core)
+
+    add_executable(mwrender_editor_benchmark tests/editor/editor_benchmark.cpp)
+    target_compile_features(mwrender_editor_benchmark PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_editor_benchmark PRIVATE MWRender::Core)
     add_test(NAME mwrender.benchmark COMMAND mwrender_benchmark)
     set_tests_properties(mwrender.benchmark PROPERTIES TIMEOUT 120)
+
+    add_executable(mwrender_comprehensive_tests tests/comprehensive_test.cpp)
+    target_compile_features(mwrender_comprehensive_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_comprehensive_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.comprehensive COMMAND mwrender_comprehensive_tests)
+    # Set working directory to root so it can find Comprehensive_Markdown_Test.md
+    set_tests_properties(mwrender.comprehensive PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
     if(MWRENDER_BUILD_CLI)
         add_test(NAME mwrender.cli.version COMMAND mwrender --version)

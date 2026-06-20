@@ -34,16 +34,26 @@ void serializeText(const Node& node, std::ostringstream& out) {
 
 void serializeEmphasis(const Node& node, std::ostringstream& out,
                         const MarkdownStyle& style) {
-    out << style.emphasisMarker;
+    const auto* data = std::get_if<EmphasisData>(&node.payload);
+    std::string marker = style.emphasisMarker;
+    if (style.preserveOriginalMarkers && data && !data->marker.empty()) {
+        marker = data->marker;
+    }
+    out << marker;
     serializeInlineContent(node, out, style);
-    out << style.emphasisMarker;
+    out << marker;
 }
 
 void serializeStrong(const Node& node, std::ostringstream& out,
                       const MarkdownStyle& style) {
-    out << style.strongMarker;
+    const auto* data = std::get_if<StrongData>(&node.payload);
+    std::string marker = style.strongMarker;
+    if (style.preserveOriginalMarkers && data && !data->marker.empty()) {
+        marker = data->marker;
+    }
+    out << marker;
     serializeInlineContent(node, out, style);
-    out << style.strongMarker;
+    out << marker;
 }
 
 void serializeStrikethrough(const Node& node, std::ostringstream& out,
@@ -140,16 +150,33 @@ void serializeBlock(const Node& node, std::ostringstream& out,
 
     case NodeType::List: {
         const auto* data = std::get_if<ListData>(&node.payload);
+        int itemIndex = 0;
         for (const auto& item : node.children) {
-            if (data && !data->ordered) {
-                out << style.bulletMarker << ' ';
+            std::string marker;
+            if (data && data->ordered) {
+                uint64_t startNum = data->start;
+                if (!style.preserveListStartNumber) startNum = 1;
+                marker = std::to_string(startNum + itemIndex) + ".";
+                if (style.preserveOriginalMarkers && !data->marker.empty()) {
+                    marker = std::to_string(startNum + itemIndex) + data->marker.back();
+                }
             } else {
-                out << "1. ";
+                marker = style.bulletMarker;
+                if (style.preserveOriginalMarkers && data && !data->marker.empty()) {
+                    marker = data->marker;
+                }
             }
+            out << marker << " ";
+
             const auto* itemData = std::get_if<ListItemData>(&item->payload);
             if (itemData && itemData->task) {
-                out << (itemData->checked ? "[x] " : "[ ] ");
+                std::string taskMarker = itemData->checked ? "[x]" : "[ ]";
+                if (style.preserveTaskMarkerCase && !itemData->taskMarker.empty()) {
+                    taskMarker = itemData->taskMarker;
+                }
+                out << taskMarker << " ";
             }
+
             for (const auto& child : item->children) {
                 if (child->type == NodeType::Paragraph) {
                     for (const auto& inlineChild : child->children) {
@@ -160,6 +187,7 @@ void serializeBlock(const Node& node, std::ostringstream& out,
                 }
             }
             out << style.lineEnding;
+            itemIndex++;
         }
         out << style.lineEnding;
         break;
@@ -170,7 +198,11 @@ void serializeBlock(const Node& node, std::ostringstream& out,
 
     case NodeType::CodeBlock: {
         const auto* data = std::get_if<CodeBlockData>(&node.payload);
-        out << style.codeFenceMarker;
+        std::string marker = style.codeFenceMarker;
+        if (style.preserveOriginalMarkers && data && !data->fenceMarker.empty()) {
+            marker = data->fenceMarker;
+        }
+        out << marker;
         if (data && !data->language.empty()) {
             out << data->language;
         }
@@ -179,7 +211,7 @@ void serializeBlock(const Node& node, std::ostringstream& out,
         if (!node.literal.empty() && node.literal.back() != '\n') {
             out << style.lineEnding;
         }
-        out << style.codeFenceMarker << style.lineEnding << style.lineEnding;
+        out << marker << style.lineEnding << style.lineEnding;
         break;
     }
 
