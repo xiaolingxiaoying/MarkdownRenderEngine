@@ -153,6 +153,43 @@ public:
         : options(renderOptions),
           sanitizer(htmlSanitizer) {}
 
+    void appendSourceAttributes(const Node& node, std::string& output) const {
+        if (options.sourceMap == SourceMapMode::None && options.renderMode != RenderMode::EditorView) {
+            return;
+        }
+        if (options.renderMode == RenderMode::EditorView && !node.id.empty()) {
+            output += " data-node-id=\"";
+            output += node.id;
+            output += '"';
+            using mwrender::editor::EditorProjection;
+            auto mode = EditorProjection::classifyNode(node);
+            output += " data-projection-mode=\"";
+            output += EditorProjection::projectionModeName(mode);
+            output += '"';
+            if (!node.contentHash.empty()) {
+                output += " data-content-hash=\"";
+                output += node.contentHash;
+                output += '"';
+            }
+        }
+        output += " data-source-line=\"";
+        output += std::to_string(node.range.begin.line);
+        output += '"';
+        if (options.sourceMap == SourceMapMode::Full || options.renderMode == RenderMode::EditorView) {
+            output += " data-source-start=\"";
+            output += std::to_string(node.range.begin.offset);
+            output += "\" data-source-end=\"";
+            output += std::to_string(node.range.end.offset);
+            output += "\" data-content-start=\"";
+            output += std::to_string(node.contentRange.begin.offset);
+            output += "\" data-content-end=\"";
+            output += std::to_string(node.contentRange.end.offset);
+            output += "\" data-node-type=\"";
+            output += nodeTypeName(node.type);
+            output += '"';
+        }
+    }
+
     void renderChildren(const Node& node, std::string& output) {
         for (const auto& child : node.children) {
             renderNode(*child, output, false);
@@ -332,11 +369,19 @@ public:
             output += ">\n";
             break;
         case NodeType::HtmlBlock:
-        case NodeType::HtmlInline:
-            renderRawHtml(node, output);
-            if (node.type == NodeType::HtmlBlock) {
+            if (options.renderMode == RenderMode::EditorView) {
+                output += "<div class=\"mw-html-block\"";
+                appendSourceAttributes(node, output);
+                output += ">";
+                renderRawHtml(node, output);
+                output += "</div>\n";
+            } else {
+                renderRawHtml(node, output);
                 output += '\n';
             }
+            break;
+        case NodeType::HtmlInline:
+            renderRawHtml(node, output);
             break;
         case NodeType::Text:
             output += escapeHtmlText(node.literal);
@@ -387,33 +432,6 @@ public:
     bool failed = false;
 
 private:
-    void appendSourceAttributes(const Node& node, std::string& output) const {
-        if (options.sourceMap == SourceMapMode::None) {
-            return;
-        }
-        if (options.renderMode == RenderMode::EditorView && !node.id.empty()) {
-            output += " data-node-id=\"";
-            output += node.id;
-            output += '"';
-            using mwrender::editor::EditorProjection;
-            auto edit = EditorProjection::classifyNode(node);
-            output += " data-editable=\"";
-            output += EditorProjection::editabilityName(edit);
-            output += '"';
-        }
-        output += " data-source-line=\"";
-        output += std::to_string(node.range.begin.line);
-        output += '"';
-        if (options.sourceMap == SourceMapMode::Full) {
-            output += " data-source-start=\"";
-            output += std::to_string(node.range.begin.offset);
-            output += "\" data-source-end=\"";
-            output += std::to_string(node.range.end.offset);
-            output += "\" data-node-type=\"";
-            output += nodeTypeName(node.type);
-            output += '"';
-        }
-    }
 
     void renderHeading(const Node& node, std::string& output) {
         const auto* data = std::get_if<HeadingData>(&node.payload);
@@ -470,7 +488,10 @@ private:
         appendSourceAttributes(node, output);
         output += ">";
         if (data && data->task) {
-            output += "<input class=\"task-list-item-checkbox\" type=\"checkbox\" disabled";
+            output += "<input class=\"task-list-item-checkbox\" type=\"checkbox\"";
+            if (options.renderMode != RenderMode::EditorView) {
+                output += " disabled";
+            }
             if (data->checked) {
                 output += " checked";
             }
@@ -709,7 +730,9 @@ HtmlRenderResult HtmlRenderer::render(
         for (const auto* defNode : state.footnoteDefs_) {
             const auto* data = std::get_if<FootnoteData>(&defNode->payload);
             std::string id = data ? data->id : "";
-            result.fragment += "<li id=\"fn-" + escapeHtmlAttribute(id) + "\">\n";
+            result.fragment += "<li id=\"fn-" + escapeHtmlAttribute(id) + "\"";
+            state.appendSourceAttributes(*defNode, result.fragment);
+            result.fragment += ">\n";
             state.renderChildren(*defNode, result.fragment);
             const auto references = state.footnoteRefs_.find(id);
             if (references != state.footnoteRefs_.end()) {

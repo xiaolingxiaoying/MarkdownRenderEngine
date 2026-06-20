@@ -190,6 +190,11 @@ if(BUILD_TESTING AND MWRENDER_BUILD_TESTS)
     target_link_libraries(mwrender_incremental_parse_tests PRIVATE MWRender::Core)
     add_test(NAME mwrender.editor.incremental COMMAND mwrender_incremental_parse_tests)
 
+    add_executable(mwrender_atomic_blocks_tests tests/editor/atomic_blocks_test.cpp)
+    target_compile_features(mwrender_atomic_blocks_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_atomic_blocks_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.atomic COMMAND mwrender_atomic_blocks_tests)
+
     add_executable(mwrender_editor_projection_tests tests/editor/editor_projection_test.cpp)
     target_compile_features(mwrender_editor_projection_tests PRIVATE cxx_std_20)
     target_link_libraries(mwrender_editor_projection_tests PRIVATE MWRender::Core)
@@ -219,6 +224,11 @@ if(BUILD_TESTING AND MWRENDER_BUILD_TESTS)
     target_compile_features(mwrender_large_doc_tests PRIVATE cxx_std_20)
     target_link_libraries(mwrender_large_doc_tests PRIVATE MWRender::Core)
     add_test(NAME mwrender.editor.large COMMAND mwrender_large_doc_tests)
+
+    add_executable(mwrender_editor_stress_tests tests/editor/editor_stress_test.cpp)
+    target_compile_features(mwrender_editor_stress_tests PRIVATE cxx_std_20)
+    target_link_libraries(mwrender_editor_stress_tests PRIVATE MWRender::Core)
+    add_test(NAME mwrender.editor.stress_test COMMAND mwrender_editor_stress_tests)
     set_tests_properties(mwrender.editor.large PROPERTIES TIMEOUT 120)
 
     add_executable(mwrender_serializer_tests tests/serializer/serializer_test.cpp)

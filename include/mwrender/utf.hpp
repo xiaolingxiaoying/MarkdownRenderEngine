@@ -49,4 +49,25 @@ inline std::size_t utf16ToUtf8Offset(std::string_view utf8, std::size_t utf16Off
     return byteOffset;
 }
 
+// Returns the byte offset of the start of the UTF-8 character that contains or precedes `offset`.
+inline std::size_t previousUtf8Boundary(std::string_view utf8, std::size_t offset) {
+    if (offset == 0) return 0;
+    if (offset > utf8.size()) offset = utf8.size();
+    offset--;
+    while (offset > 0 && (static_cast<unsigned char>(utf8[offset]) & 0xC0) == 0x80) {
+        offset--;
+    }
+    return offset;
+}
+
+// Returns the byte offset of the start of the next UTF-8 character after `offset`.
+inline std::size_t nextUtf8Boundary(std::string_view utf8, std::size_t offset) {
+    if (offset >= utf8.size()) return utf8.size();
+    offset++;
+    while (offset < utf8.size() && (static_cast<unsigned char>(utf8[offset]) & 0xC0) == 0x80) {
+        offset++;
+    }
+    return offset;
+}
+
 } // namespace mwrender

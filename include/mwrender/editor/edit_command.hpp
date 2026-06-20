@@ -5,6 +5,7 @@
 #include <optional>
 
 #include <mwrender/editor/selection_map.hpp>
+#include <mwrender/diagnostics.hpp>
 
 namespace mwrender::editor {
 class DocumentSession;
@@ -49,6 +50,9 @@ struct EditCommandResult {
     bool ok = false;
     std::string markdown;
     Selection newSelection;
+    std::string fallbackReason;
+    std::vector<Diagnostic> diagnostics;
+    bool fullReparse = false;
 };
 
 class EditCommandExecutor {

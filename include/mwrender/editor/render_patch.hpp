@@ -13,20 +13,26 @@
 
 namespace mwrender::editor {
 
+struct NodeHtmlPatch {
+    std::string nodeId;
+    std::string html;
+    ProjectionMode mode = ProjectionMode::Atomic;
+    SourceRange sourceRange;
+    SourceRange contentRange;
+    std::string parentId;
+    std::size_t insertIndex = 0;
+};
+
 struct RenderPatch {
     std::size_t revision = 0;
-    Selection selection;
+    bool fullReload = false;
     std::vector<std::string> removedNodeIds;
-    
-    struct HtmlSnippet {
-        std::string id;
-        std::string html;
-        std::string parentId;
-        std::size_t insertIndex = 0;
-    };
-    
-    std::vector<HtmlSnippet> insertedNodes;
-    std::vector<HtmlSnippet> changedNodes;
+    std::vector<NodeHtmlPatch> changedNodes;
+    std::vector<NodeHtmlPatch> insertedNodes;
+    std::optional<Selection> selection;
+    std::vector<Diagnostic> diagnostics;
+
+    [[nodiscard]] std::string toJson() const;
 };
 
 class RenderPatchGenerator {
@@ -36,7 +42,7 @@ public:
     RenderPatch generatePatch(
         const Node& document,
         const UpdateResult& parseResult,
-        const Selection& newSelection = {}
+        const std::optional<Selection>& newSelection = std::nullopt
     ) const;
 
 private:

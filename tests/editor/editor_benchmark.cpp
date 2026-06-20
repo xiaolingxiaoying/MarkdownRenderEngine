@@ -41,8 +41,7 @@ void runBenchmark() {
     mwrender::editor::RenderPatchGenerator patchGen(projection);
     
     start = std::chrono::high_resolution_clock::now();
-    mwrender::editor::Selection emptySel;
-    auto patch = patchGen.generatePatch(session.document(), parseResult, emptySel);
+    auto patch = patchGen.generatePatch(session.document(), parseResult, std::nullopt);
     end = std::chrono::high_resolution_clock::now();
     auto renderPatchMs = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     std::cout << "Render Patch Generation: " << renderPatchMs << " ms\n";

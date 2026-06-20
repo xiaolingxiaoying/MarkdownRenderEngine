@@ -3,7 +3,7 @@
 ## 1. 状态
 
 本文记录开发启动时确定的架构。其约束优先级低于
-[`DevelopmentGuide.md`](DevelopmentGuide.md)，但高于模块内部实现偏好。
+[`development.md`](development.md)，但高于模块内部实现偏好。
 
 当前阶段：MVP 可用，Phase 0-7 的核心交付已落地。
 

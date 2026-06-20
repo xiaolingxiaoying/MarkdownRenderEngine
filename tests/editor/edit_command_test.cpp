@@ -119,6 +119,7 @@ void testDeleteForwardAtEnd() {
 
     auto result = executor.execute(cmd);
     require(!result.ok, "DeleteForward at end should fail");
+    require(result.fallbackReason == "Cannot delete forward at the end of the document", "Should set fallback reason");
 }
 
 // ===== SplitBlock =====
@@ -168,6 +169,20 @@ void testToggleStrong() {
     require(result.ok, "ToggleStrong should succeed");
     require(result.markdown == "**Hello** world", "ToggleStrong should wrap with **");
     require(result.newSelection.anchor.offset == 0, "Cursor at start");
+}
+
+void testToggleStrongFail() {
+    mwrender::editor::DocumentSessionOptions options;
+    mwrender::editor::DocumentSession session(options);
+    session.load("Hello world");
+
+    auto executor = makeExecutor(session);
+    auto cmd = selCmd(0, 0); // Empty selection should fail
+    cmd.type = mwrender::editor::EditCommandType::ToggleStrong;
+
+    auto result = executor.execute(cmd);
+    require(!result.ok, "ToggleStrong on empty selection should fail");
+    require(result.fallbackReason == "ToggleStrong requires a non-empty selection", "Should set fallback reason");
 }
 
 // ===== ToggleEmphasis =====
@@ -457,6 +472,7 @@ int main() {
     testSplitBlock();
     testMergeBlock();
     testToggleStrong();
+    testToggleStrongFail();
     testToggleEmphasis();
     testToggleTaskOn();
     testToggleTaskOff();

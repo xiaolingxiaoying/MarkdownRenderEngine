@@ -153,7 +153,8 @@ bool BlockIndex::isBlockNode(NodeType type) const {
 }
 
 void BlockIndex::traverse(const Node& node, std::size_t currentDepth) {
-    if (isBlockNode(node.type)) {
+    bool isBlock = isBlockNode(node.type);
+    if (isBlock) {
         blocks_.push_back(BlockEntry{
             node.id,
             node.type,
@@ -163,9 +164,11 @@ void BlockIndex::traverse(const Node& node, std::size_t currentDepth) {
         });
     }
 
-    for (const auto& child : node.children) {
-        if (child) {
-            traverse(*child, currentDepth + 1);
+    if (isBlock) {
+        for (const auto& child : node.children) {
+            if (child) {
+                traverse(*child, currentDepth + 1);
+            }
         }
     }
 }

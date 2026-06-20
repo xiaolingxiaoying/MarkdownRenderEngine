@@ -556,6 +556,7 @@ static std::unique_ptr<Node> cloneSubtree(const Node& node) {
     auto n = std::make_unique<Node>();
     n->id = node.id;
     n->type = node.type;
+    n->contentHash = node.contentHash;
     n->range = node.range;
     n->contentRange = node.contentRange;
     n->markerRanges = node.markerRanges;

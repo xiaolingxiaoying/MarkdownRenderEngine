@@ -212,6 +212,47 @@ void testFallbackMapping() {
     require(s.offset == 3, "Fallback: offset equals textOffset");
 }
 
+// ===== Unicode (CJK and Emojis) =====
+void testUnicodeMapping() {
+    mwrender::editor::DocumentSessionOptions options;
+    mwrender::editor::DocumentSession session(options);
+    session.load("你好**世界**\n");
+
+    mwrender::editor::SelectionMap selMap(session);
+    const auto& doc = session.document();
+
+    // Paragraph > Strong > Text
+    const auto& para = doc.children[0];
+    require(para->children.size() == 2, "Paragraph should have 2 children");
+    const auto& strong = para->children[1];
+    require(strong->type == mwrender::NodeType::Strong, "second child is Strong");
+    const auto& text = strong->children[0];
+    require(text->type == mwrender::NodeType::Text, "child is Text");
+
+    // CJK characters: "世界" in UTF-8 has 6 bytes.
+    // roundtrip visual offset 0 of "世界"
+    roundtrip(selMap, text->id, 0, "CJK text offset 0");
+    // visual offset 3 of "世界" (after "世", 3 UTF-8 bytes)
+    roundtrip(selMap, text->id, 3, "CJK text offset 3");
+    // visual offset 6 of "世界" (after "世界", 6 UTF-8 bytes)
+    roundtrip(selMap, text->id, 6, "CJK text offset 6");
+
+    // Test with Emojis (surrogate pairs)
+    session.load("hello 🌟 world\n");
+    mwrender::editor::SelectionMap selMap2(session);
+    const auto& doc2 = session.document();
+    const auto& para2 = doc2.children[0];
+    const auto& text2 = para2->children[0];
+
+    // "hello 🌟 world"
+    // "hello " has length 6 (6 UTF-8 bytes)
+    // "🌟" has length 4 UTF-8 bytes
+    // roundtrip visual offset 6 (at star)
+    roundtrip(selMap2, text2->id, 6, "Emoji offset 6");
+    // roundtrip visual offset 10 (after star, 6 + 4 = 10 UTF-8 bytes)
+    roundtrip(selMap2, text2->id, 10, "Emoji offset 10");
+}
+
 } // namespace
 
 int main() {
@@ -225,6 +266,7 @@ int main() {
     testInlineCodeMapping();
     testLinkMapping();
     testFallbackMapping();
+    testUnicodeMapping();
 
     std::cout << "All selection_map tests passed.\n";
     return 0;

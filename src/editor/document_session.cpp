@@ -70,9 +70,89 @@ UpdateResult DocumentSession::applyChange(const TextChange& change) {
 
     // Save old node info before text change for Phase 2 matching
     std::string phase2NodeId;
+    NodeType phase2NodeType = NodeType::Document;
     if (options_.enableIncrementalParsing && document_) {
-        const Node* oldNode = findNodeAtOffset(change.from);
-        if (oldNode) phase2NodeId = oldNode->id;
+        const BlockEntry* oldBlock = blockIndex_.blockAtOffset(change.from);
+        if (oldBlock) {
+            phase2NodeId = oldBlock->nodeId;
+            phase2NodeType = oldBlock->type;
+        }
+    }
+
+    // Determine affected range before editing
+    SourceRange affected;
+    if (document_) {
+        affected = blockIndex_.affectedRangeForChange(change);
+        result.affectedRange = affected;
+    }
+
+    // Check complex block fallback reasons
+    std::string fallbackReason;
+    bool forceFullReparse = false;
+    if (options_.enableIncrementalParsing && document_ && !phase2NodeId.empty()) {
+        if (phase2NodeType == NodeType::List || phase2NodeType == NodeType::ListItem) {
+            forceFullReparse = true;
+            fallbackReason = "list incremental parsing not supported yet";
+        } else if (phase2NodeType == NodeType::BlockQuote) {
+            forceFullReparse = true;
+            fallbackReason = "blockquote incremental parsing not supported yet";
+        } else if (phase2NodeType == NodeType::Table ||
+                   phase2NodeType == NodeType::TableHead ||
+                   phase2NodeType == NodeType::TableBody ||
+                   phase2NodeType == NodeType::TableRow ||
+                   phase2NodeType == NodeType::TableCell) {
+            forceFullReparse = true;
+            fallbackReason = "table incremental parsing not supported yet";
+        } else if (phase2NodeType == NodeType::HtmlBlock) {
+            forceFullReparse = true;
+            fallbackReason = "htmlblock incremental parsing not supported yet";
+        } else if (phase2NodeType == NodeType::FootnoteDef) {
+            forceFullReparse = true;
+            fallbackReason = "footnotedef incremental parsing not supported yet";
+        } else if (phase2NodeType == NodeType::FrontMatter) {
+            forceFullReparse = true;
+            fallbackReason = "frontmatter incremental parsing not supported yet";
+        } else if (phase2NodeType == NodeType::Toc) {
+            forceFullReparse = true;
+            fallbackReason = "toc incremental parsing not supported yet";
+        }
+
+        // Also check if any ancestor block is a complex container
+        if (!forceFullReparse) {
+            std::vector<NodeType> path;
+            auto dfs = [&](const Node& n, auto& ref) -> bool {
+                if (n.id == phase2NodeId) {
+                    for (auto t : path) {
+                        if (t == NodeType::List || t == NodeType::ListItem) {
+                            fallbackReason = "list incremental parsing not supported yet";
+                            return true;
+                        }
+                        if (t == NodeType::BlockQuote) {
+                            fallbackReason = "blockquote incremental parsing not supported yet";
+                            return true;
+                        }
+                        if (t == NodeType::Table || t == NodeType::TableRow || t == NodeType::TableCell) {
+                            fallbackReason = "table incremental parsing not supported yet";
+                            return true;
+                        }
+                        if (t == NodeType::FootnoteDef) {
+                            fallbackReason = "footnotedef incremental parsing not supported yet";
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                path.push_back(n.type);
+                for (const auto& child : n.children) {
+                    if (child && ref(*child, ref)) return true;
+                }
+                path.pop_back();
+                return false;
+            };
+            if (dfs(*document_, dfs)) {
+                forceFullReparse = true;
+            }
+        }
     }
 
     // Apply the text change
@@ -80,10 +160,14 @@ UpdateResult DocumentSession::applyChange(const TextChange& change) {
     revision_++;
     result.revision = revision_;
 
-    // Phase 2: Fast path for simple block edits — parse only the affected block
-    if (options_.enableIncrementalParsing && document_ && !phase2NodeId.empty()) {
-        blockIndex_.rebuild(*document_);
-        SourceRange affected = blockIndex_.affectedRangeForChange(change);
+    bool walkedFastPath = false;
+
+    // Fast path: parse only the affected block
+    if (options_.enableIncrementalParsing && document_ && !phase2NodeId.empty() && !forceFullReparse &&
+        (phase2NodeType == NodeType::Paragraph || phase2NodeType == NodeType::Heading ||
+         phase2NodeType == NodeType::ThematicBreak || phase2NodeType == NodeType::CodeBlock ||
+         phase2NodeType == NodeType::MathBlock)) {
+        
         const auto& allBlocks = blockIndex_.blocks();
         bool isFullDoc = (!allBlocks.empty() &&
                           affected.begin.offset == allBlocks[0].range.begin.offset &&
@@ -94,63 +178,118 @@ UpdateResult DocumentSession::applyChange(const TextChange& change) {
                 affected.begin.offset,
                 affected.end.offset - affected.begin.offset);
 
-            auto fragResult = engine_.parseFragment(fragment, NodeType::Paragraph,
+            auto fragResult = engine_.parseFragment(fragment, phase2NodeType,
                                                      options_.parseOptions);
             if (fragResult.ok && fragResult.document &&
                 !fragResult.document->children.empty()) {
 
                 auto newBlock = std::move(fragResult.document->children[0]);
-                // Adjust fragment-relative offsets to document-absolute offsets
-                auto shiftRanges = [&](Node& n, auto& self) -> void {
-                    n.range.begin.offset = affected.begin.offset + n.range.begin.offset;
-                    n.range.end.offset = affected.begin.offset + n.range.end.offset;
-                    if (n.contentRange.begin.offset != 0 || n.contentRange.end.offset != 0) {
-                        n.contentRange.begin.offset = affected.begin.offset + n.contentRange.begin.offset;
-                        n.contentRange.end.offset = affected.begin.offset + n.contentRange.end.offset;
+                if (phase2NodeType == NodeType::MathBlock && newBlock->type == NodeType::Paragraph) {
+                    if (!newBlock->children.empty() && newBlock->children[0]->type == NodeType::MathBlock) {
+                        newBlock = std::move(newBlock->children[0]);
                     }
-                    for (auto& mr : n.markerRanges) {
-                        mr.begin.offset = affected.begin.offset + mr.begin.offset;
-                        mr.end.offset = affected.begin.offset + mr.end.offset;
-                    }
-                    for (auto& c : n.children) {
-                        if (c) self(*c, self);
-                    }
-                };
-                shiftRanges(*newBlock, shiftRanges);
-
-                // Find the old node by ID in the mutable tree and replace
-                std::function<bool(Node&)> replacer = [&](Node& n) -> bool {
-                    for (auto& c : n.children) {
-                        if (c && c->id == phase2NodeId) {
-                            NodeIdRegistry registry;
-                            registry.inheritIds(*c, *newBlock);
-                            computeContentHashes(*newBlock, markdown_);
-                            std::string inheritedId = newBlock->id;
-                            c = std::move(newBlock);
-                            nodeMap_.clear();
-                            buildNodeMap(*document_);
-                            blockIndex_.rebuild(*document_);
-
-                            result.changedNodeIds.push_back(inheritedId);
-                            result.revision = revision_;
-                            result.fullReparse = false;
-                            result.ok = true;
-                            return true;
-                        }
-                        if (c && replacer(*c)) return true;
-                    }
-                    return false;
-                };
-
-                if (replacer(*document_)) {
-                    return result;
                 }
+                if (newBlock->type == phase2NodeType) {
+                    // Adjust fragment-relative offsets to document-absolute offsets
+                    auto shiftRanges = [&](Node& n, auto& self) -> void {
+                        n.range.begin.offset = affected.begin.offset + n.range.begin.offset;
+                        n.range.end.offset = affected.begin.offset + n.range.end.offset;
+                        if (n.contentRange.begin.offset != 0 || n.contentRange.end.offset != 0) {
+                            n.contentRange.begin.offset = affected.begin.offset + n.contentRange.begin.offset;
+                            n.contentRange.end.offset = affected.begin.offset + n.contentRange.end.offset;
+                        }
+                        for (auto& mr : n.markerRanges) {
+                            mr.begin.offset = affected.begin.offset + mr.begin.offset;
+                            mr.end.offset = affected.begin.offset + mr.end.offset;
+                        }
+                        for (auto& c : n.children) {
+                            if (c) self(*c, self);
+                        }
+                    };
+                    shiftRanges(*newBlock, shiftRanges);
+
+                    // Find the old node by ID in the mutable tree and replace
+                    std::function<bool(Node&)> replacer = [&](Node& n) -> bool {
+                        for (auto& c : n.children) {
+                            if (c && c->id == phase2NodeId) {
+                                // Subtree diffing before replacement
+                                std::unordered_map<std::string, std::string> oldSubtreeHashes;
+                                auto collect = [](const Node& node, std::unordered_map<std::string, std::string>& m, auto& ref) -> void {
+                                    if (!node.id.empty()) m[node.id] = node.contentHash;
+                                    for (const auto& child : node.children) {
+                                        if (child) ref(*child, m, ref);
+                                    }
+                                };
+                                collect(*c, oldSubtreeHashes, collect);
+
+                                NodeIdRegistry registry;
+                                registry.inheritIds(*c, *newBlock);
+                                computeContentHashes(*newBlock, markdown_);
+
+                                std::unordered_map<std::string, std::string> newSubtreeHashes;
+                                collect(*newBlock, newSubtreeHashes, collect);
+
+                                // Compute differences inside the subtree
+                                for (const auto& pair : newSubtreeHashes) {
+                                    auto it = oldSubtreeHashes.find(pair.first);
+                                    if (it == oldSubtreeHashes.end()) {
+                                        result.insertedNodeIds.push_back(pair.first);
+                                    } else {
+                                        if (it->second != pair.second) {
+                                            result.changedNodeIds.push_back(pair.first);
+                                        }
+                                    }
+                                }
+                                for (const auto& pair : oldSubtreeHashes) {
+                                    if (newSubtreeHashes.find(pair.first) == newSubtreeHashes.end()) {
+                                        result.removedNodeIds.push_back(pair.first);
+                                    }
+                                }
+
+                                for (const auto& pair : oldSubtreeHashes) {
+                                    nodeMap_.erase(pair.first);
+                                }
+                                c = std::move(newBlock);
+                                std::function<void(const Node&)> updateNodeMapForSubtree = [&](const Node& node) {
+                                    if (!node.id.empty()) {
+                                        nodeMap_[node.id] = &node;
+                                    }
+                                    for (const auto& child : node.children) {
+                                        if (child) updateNodeMapForSubtree(*child);
+                                    }
+                                };
+                                updateNodeMapForSubtree(*c);
+                                blockIndex_.rebuild(*document_);
+
+                                result.revision = revision_;
+                                result.fullReparse = false;
+                                result.partialReparse = true;
+                                result.ok = true;
+                                walkedFastPath = true;
+                                return true;
+                            }
+                            if (c && replacer(*c)) return true;
+                        }
+                        return false;
+                    };
+
+                    if (replacer(*document_)) {
+                        return result;
+                    }
+                } else {
+                    fallbackReason = "parsed node type changed during incremental edit";
+                }
+            } else {
+                fallbackReason = "failed to parse fragment incrementally";
             }
+        } else {
+            fallbackReason = "affected range covers entire document";
         }
     }
 
-    // Fallback: full re-parse (existing Phase 1 logic)
+    // Fallback: full re-parse
     result.fullReparse = true;
+    result.fallbackReason = fallbackReason.empty() ? "unsupported or complex edit" : fallbackReason;
 
     ParseResult parseResult = engine_.parse(markdown_, options_.parseOptions);
     
@@ -193,41 +332,6 @@ UpdateResult DocumentSession::applyChange(const TextChange& change) {
     if (document_) {
         buildNodeMap(*document_);
         blockIndex_.rebuild(*document_);
-
-        // Phase 1 incremental: filter results to only affected range
-        SourceRange affected = blockIndex_.affectedRangeForChange(change);
-        const auto& allBlocks = blockIndex_.blocks();
-        bool isFullDoc = (!allBlocks.empty() &&
-                          affected.begin.offset == allBlocks[0].range.begin.offset &&
-                          affected.end.offset == allBlocks[0].range.end.offset);
-
-        if (!isFullDoc) {
-            auto filterInRange = [&](const std::vector<std::string>& ids) {
-                std::vector<std::string> filtered;
-                for (const auto& id : ids) {
-                    const BlockEntry* be = blockIndex_.blockById(id);
-                    if (be && be->range.begin.offset >= affected.begin.offset
-                          && be->range.end.offset <= affected.end.offset) {
-                        filtered.push_back(id);
-                    }
-                }
-                return filtered;
-            };
-
-            result.changedNodeIds = filterInRange(result.changedNodeIds);
-            result.insertedNodeIds = filterInRange(result.insertedNodeIds);
-            result.removedNodeIds = filterInRange(result.removedNodeIds);
-
-            if (result.changedNodeIds.size() <= 1 &&
-                result.insertedNodeIds.empty() &&
-                result.removedNodeIds.empty()) {
-                result.fullReparse = false;
-            } else {
-                result.fallbackReason = "cross-block change requires full re-parse";
-            }
-        } else {
-            result.fallbackReason = "affected range covers entire document";
-        }
     }
 
     result.ok = (document_ != nullptr);
@@ -242,6 +346,10 @@ UpdateResult DocumentSession::applyCommand(const EditCommand& command) {
     EditCommandExecutor executor(*this, selMap);
     auto cmdResult = executor.execute(command);
     if (!cmdResult.ok) {
+        result.ok = false;
+        result.fallbackReason = std::move(cmdResult.fallbackReason);
+        result.diagnostics = std::move(cmdResult.diagnostics);
+        result.fullReparse = cmdResult.fullReparse;
         return result;
     }
 

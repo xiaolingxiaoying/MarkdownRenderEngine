@@ -9,25 +9,78 @@ SelectionMap::SelectionMap(const DocumentSession& session)
 
 namespace {
 
-// 获取节点的"可视文本起始偏移"：排除所有标记后，可见文本在 source 中的起始位置
-std::size_t visualBase(const Node& node) {
-    // Text 和 CodeBlock 节点使用 range.begin（它们本身就是可视文本）
-    if (node.type == NodeType::Text || node.type == NodeType::CodeBlock) {
-        return node.range.begin.offset;
+void collectSegments(const Node& node, std::vector<ProjectionSegment>& segments, std::string& visibleText) {
+    if (!node.children.empty()) {
+        std::size_t currentOffset = node.range.begin.offset;
+        for (const auto& child : node.children) {
+            if (!child) continue;
+            if (child->range.begin.offset > currentOffset) {
+                ProjectionSegment markerSeg;
+                markerSeg.projectionId = node.id + "_marker_" + std::to_string(currentOffset);
+                markerSeg.nodeId = node.id;
+                markerSeg.sourceRange.begin.offset = currentOffset;
+                markerSeg.sourceRange.end.offset = child->range.begin.offset;
+                markerSeg.kind = ProjectionSegmentKind::Hidden;
+                segments.push_back(markerSeg);
+            }
+            collectSegments(*child, segments, visibleText);
+            currentOffset = child->range.end.offset;
+        }
+        if (node.range.end.offset > currentOffset) {
+            ProjectionSegment markerSeg;
+            markerSeg.projectionId = node.id + "_marker_" + std::to_string(currentOffset);
+            markerSeg.nodeId = node.id;
+            markerSeg.sourceRange.begin.offset = currentOffset;
+            markerSeg.sourceRange.end.offset = node.range.end.offset;
+            markerSeg.kind = ProjectionSegmentKind::Hidden;
+            segments.push_back(markerSeg);
+        }
+        return;
     }
-    // 容器节点使用 contentRange.begin（已排除开头标记）
-    return node.contentRange.begin.offset;
+
+    if (node.contentRange.begin.offset > node.range.begin.offset || node.contentRange.end.offset < node.range.end.offset) {
+        if (node.contentRange.begin.offset > node.range.begin.offset) {
+            ProjectionSegment markerSeg;
+            markerSeg.projectionId = node.id + "_marker_start";
+            markerSeg.nodeId = node.id;
+            markerSeg.sourceRange.begin.offset = node.range.begin.offset;
+            markerSeg.sourceRange.end.offset = node.contentRange.begin.offset;
+            markerSeg.kind = ProjectionSegmentKind::Hidden;
+            segments.push_back(markerSeg);
+        }
+        
+        ProjectionSegment textSeg;
+        textSeg.projectionId = node.id + "_text";
+        textSeg.nodeId = node.id;
+        textSeg.sourceRange = node.contentRange;
+        textSeg.kind = ProjectionSegmentKind::Text;
+        textSeg.text = node.literal;
+        segments.push_back(textSeg);
+        visibleText += textSeg.text;
+
+        if (node.range.end.offset > node.contentRange.end.offset) {
+            ProjectionSegment markerSeg;
+            markerSeg.projectionId = node.id + "_marker_end";
+            markerSeg.nodeId = node.id;
+            markerSeg.sourceRange.begin.offset = node.contentRange.end.offset;
+            markerSeg.sourceRange.end.offset = node.range.end.offset;
+            markerSeg.kind = ProjectionSegmentKind::Hidden;
+            segments.push_back(markerSeg);
+        }
+        return;
+    }
+
+    ProjectionSegment seg;
+    seg.projectionId = node.id + "_text";
+    seg.nodeId = node.id;
+    seg.sourceRange = node.range;
+    seg.kind = ProjectionSegmentKind::Text;
+    seg.text = node.literal;
+    segments.push_back(seg);
+    visibleText += seg.text;
 }
 
-// 获取节点的"可视文本结束偏移"
-std::size_t visualEnd(const Node& node) {
-    if (node.type == NodeType::Text || node.type == NodeType::CodeBlock) {
-        return node.range.end.offset;
-    }
-    return node.contentRange.end.offset;
-}
-
-}
+} // namespace
 
 SourcePositionEx SelectionMap::visualToSource(const VisualPosition& visual) const {
     SourcePositionEx source;
@@ -35,21 +88,48 @@ SourcePositionEx SelectionMap::visualToSource(const VisualPosition& visual) cons
     source.affinity = Affinity::After;
 
     const Node* node = session_.findNodeById(visual.nodeId);
-
-    // Fallback: 如果 nodeId 找不到（patch 后节点重建），按 offset 搜索文档
     if (!node) {
         source.offset = visual.textOffset;
         return source;
     }
 
-    std::size_t base = visualBase(*node);
-    source.offset = base + visual.textOffset;
+    std::vector<ProjectionSegment> segments;
+    std::string visibleText;
+    collectSegments(*node, segments, visibleText);
 
-    if (source.offset > visualEnd(*node)) {
-        source.offset = visualEnd(*node);
+    std::size_t visibleByteOffset = visual.textOffset;
+
+    if (visibleByteOffset == 0) {
+        for (const auto& seg : segments) {
+            if (seg.kind == ProjectionSegmentKind::Text) {
+                source.offset = seg.sourceRange.begin.offset;
+                return source;
+            }
+        }
+        source.offset = node->contentRange.begin.offset;
+        return source;
     }
-    if (source.offset < node->range.begin.offset) {
-        source.offset = node->range.begin.offset;
+
+    std::size_t currentVisualOffset = 0;
+    const ProjectionSegment* lastTextSeg = nullptr;
+
+    for (const auto& seg : segments) {
+        if (seg.kind == ProjectionSegmentKind::Text) {
+            std::size_t len = seg.text.size();
+            if (visibleByteOffset >= currentVisualOffset && visibleByteOffset <= currentVisualOffset + len) {
+                std::size_t rel = visibleByteOffset - currentVisualOffset;
+                source.offset = seg.sourceRange.begin.offset + rel;
+                return source;
+            }
+            currentVisualOffset += len;
+            lastTextSeg = &seg;
+        }
+    }
+
+    if (lastTextSeg) {
+        source.offset = lastTextSeg->sourceRange.end.offset;
+    } else {
+        source.offset = node->contentRange.end.offset;
     }
 
     return source;
@@ -65,14 +145,40 @@ VisualPosition SelectionMap::sourceToVisual(const SourcePositionEx& source) cons
         return visual;
     }
 
-    std::size_t base = visualBase(*node);
-    if (source.offset >= base) {
-        visual.textOffset = source.offset - base;
-    }
-    if (visual.textOffset > visualEnd(*node) - base) {
-        visual.textOffset = visualEnd(*node) - base;
+    std::vector<ProjectionSegment> segments;
+    std::string visibleText;
+    collectSegments(*node, segments, visibleText);
+
+    std::size_t visibleByteOffset = 0;
+    bool found = false;
+
+    for (const auto& seg : segments) {
+        if (seg.kind == ProjectionSegmentKind::Text) {
+            if (source.offset >= seg.sourceRange.begin.offset && source.offset <= seg.sourceRange.end.offset) {
+                std::size_t rel = source.offset - seg.sourceRange.begin.offset;
+                visibleByteOffset = visibleByteOffset + rel;
+                found = true;
+                break;
+            }
+            visibleByteOffset += seg.text.size();
+        } else {
+            // Hidden segment
+            if (source.offset >= seg.sourceRange.begin.offset && source.offset <= seg.sourceRange.end.offset) {
+                found = true;
+                break;
+            }
+        }
     }
 
+    if (!found) {
+        if (source.offset < node->contentRange.begin.offset) {
+            visibleByteOffset = 0;
+        } else {
+            visibleByteOffset = visibleText.size();
+        }
+    }
+
+    visual.textOffset = visibleByteOffset;
     return visual;
 }
 

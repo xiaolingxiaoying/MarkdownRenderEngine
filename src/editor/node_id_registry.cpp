@@ -3,13 +3,45 @@
 
 namespace mwrender::editor {
 
+void NodeIdRegistry::collectUsedIds(const Node& node) {
+    if (!node.id.empty()) {
+        usedIds_.insert(node.id);
+    }
+    for (const auto& child : node.children) {
+        if (child) {
+            collectUsedIds(*child);
+        }
+    }
+}
+
 void NodeIdRegistry::inheritIds(const Node& oldRoot, Node& newRoot) {
+    collectUsedIds(oldRoot);
     newRoot.id = oldRoot.id.empty() ? allocate(newRoot.type) : oldRoot.id;
     matchSubtrees(oldRoot, newRoot);
+
+    // Resolve any duplicate IDs in the new tree
+    std::unordered_set<std::string> newTreeIds;
+    auto resolveDuplicates = [&](Node& node, auto& ref) -> void {
+        if (node.id.empty() || newTreeIds.find(node.id) != newTreeIds.end()) {
+            node.id = allocate(node.type);
+        } else {
+            usedIds_.insert(node.id);
+        }
+        newTreeIds.insert(node.id);
+        for (auto& child : node.children) {
+            if (child) ref(*child, ref);
+        }
+    };
+    resolveDuplicates(newRoot, resolveDuplicates);
 }
 
 std::string NodeIdRegistry::allocate(NodeType) {
-    return "n" + std::to_string(counter_++);
+    std::string id;
+    do {
+        id = "n" + std::to_string(counter_++);
+    } while (usedIds_.find(id) != usedIds_.end());
+    usedIds_.insert(id);
+    return id;
 }
 
 void NodeIdRegistry::matchSubtrees(const Node& oldNode, Node& newNode) {

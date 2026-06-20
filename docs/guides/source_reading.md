@@ -409,14 +409,14 @@ This is **MWRender**.
 
 建议配合源码按以下顺序阅读：
 
-1. `docs/Architecture.md`：模块边界和设计约束；
-2. `docs/AST_SPEC.md`：AST 与源码范围；
-3. `docs/API.md`：公共 API 用法；
-4. `docs/HTML_OUTPUT_SPEC.md`：HTML 输出约定；
-5. `docs/SECURITY.md`：安全边界；
-6. `docs/THEME_SPEC.md`：主题格式与优先级；
-7. `docs/Compatibility.md`：语法支持程度；
-8. `docs/DevelopmentGuide.md`：规范性实现要求。
+1. `docs/core/architecture.md`：模块边界和设计约束；
+2. `docs/specs/ast.md`：AST 与源码范围；
+3. `docs/core/api.md`：公共 API 用法；
+4. `docs/specs/html.md`：HTML 输出约定；
+5. `docs/core/security.md`：安全边界；
+6. `docs/specs/theme.md`：主题格式与优先级；
+7. `docs/specs/compatibility.md`：语法支持程度；
+8. `docs/core/development.md`：规范性实现要求。
 
 ## 12. 最短学习路线
 

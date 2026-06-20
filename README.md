@@ -15,7 +15,7 @@ AST and renders deterministic HTML for CLI and application integration.
 - Installable CMake package and command-line application.
 - Unit, snapshot, conformance, stress, and security tests.
 
-See [Compatibility](docs/Compatibility.md) for the exact supported syntax.
+See [Compatibility](docs/specs/compatibility.md) for the exact supported syntax.
 
 ## Build
 
@@ -35,7 +35,7 @@ mwrender document.md --html-policy sanitized
 mwrender document.md --dump-ast
 ```
 
-See [CLI Usage](docs/CLI_USAGE.md) for all options.
+See [CLI Usage](docs/guides/cli.md) for all options.
 
 ## C++ API
 
@@ -57,19 +57,20 @@ int main() {
 }
 ```
 
-See [API](docs/API.md) and [Integration](docs/INTEGRATION.md).
+See [API](docs/core/api.md) and [Integration](docs/guides/integration.md).
 
 ## Themes
 
 Seven GitHub-derived themes are embedded. External theme packages support
 `content.css`, optional `code.css`, manifest variables, and path validation.
 
-See [Theme Specification](docs/THEME_SPEC.md).
+See [Theme Specification](docs/specs/theme.md).
 
 ## Documentation
 
-- [Architecture](docs/Architecture.md)
-- [AST Specification](docs/AST_SPEC.md)
-- [HTML Output Specification](docs/HTML_OUTPUT_SPEC.md)
-- [Security](docs/SECURITY.md)
-- [Roadmap](docs/ROADMAP.md)
+- [EditorCore Documentation Index](docs/editor/README.md)
+- [Architecture](docs/core/architecture.md)
+- [AST Specification](docs/specs/ast.md)
+- [HTML Output Specification](docs/specs/html.md)
+- [Security](docs/core/security.md)
+- [Roadmap (Legacy)](docs/archive/ROADMAP_v0.1.md)

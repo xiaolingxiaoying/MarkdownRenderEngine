@@ -7,9 +7,40 @@ The `EditorCore` module is responsible for bridging the gap between the static M
 - **Markdown is the Single Source of Truth**: The raw Markdown string is the only true data source. The AST is a structural representation of it, and HTML/DOM is just the visual representation.
 - **Stateful Document Session**: Editing requires a long-lived `DocumentSession` that tracks changes, maintains `BlockIndex`, and manages AST node IDs.
 
-## 3. Architecture
+## 3. API Stability
+To ensure safe integration with frontends (e.g., MWRenderQtDemo), the EditorCore API is divided into Stable and Experimental components:
 
-```
+### Stable APIs (Ready for integration)
+- `DocumentSession::load()` and `DocumentSession::applyCommand()`
+- `DocumentSession::markdown()` and `DocumentSession::document()`
+- `Node.id` based node lookup (`findNodeById()`)
+- `EditCommand` execution (base commands like `ReplaceSelection`, `DeleteBackward`, `DeleteForward`, `SplitBlock`, `MergeBlock`)
+- `RenderPatchGenerator` output format
+
+### Experimental APIs (Subject to change)
+- `EditorProjection` specific projection modes (`SourceEditable`, `Atomic`)
+- `IncrementalParser` (currently falls back to full parse for complex structures)
+- `SelectionMap` hidden marker mappings (in development)
+
+## 4. Key Concepts & Semantics
+
+### Node Identity: `Node.id` vs `Node.contentHash`
+- **`Node.id`**: A stable string identifier bound to the DOM `data-node-id`. It survives edits (e.g., modifying a paragraph's text keeps the same `Node.id`). Used by `RenderPatch` to update the UI.
+- **`Node.contentHash`**: A hash based strictly on the node's type and content. Used internally to determine if a node has actually changed or if it can be skipped during patch generation.
+
+### Ranges: `SourceRange`, `contentRange`, `markerRanges`
+- **`SourceRange`**: The absolute full span of the node in the original Markdown string, including all syntax markers (e.g., `**bold**` -> the entire string).
+- **`contentRange`**: The span of the actual textual content, excluding the syntax markers (e.g., `**bold**` -> only `bold`).
+- **`markerRanges`**: The specific spans of the syntax markers themselves (e.g., the two sets of `**`).
+
+### Render Modes
+- **`RenderMode::Preview`**: Generates standard HTML output for reading. No editor-specific metadata.
+- **`RenderMode::EditorView`**: Generates HTML injected with `data-node-id`, `data-source-start`, `data-projection-mode` and other metadata needed by the editor frontend to map DOM back to the AST.
+- **`RenderMode::Export`**: Generates clean HTML optimized for exporting to external formats (e.g., PDF, static websites), often fully self-contained.
+
+## 5. Architecture
+
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    DocumentSession                          │
 │  ┌─────────────┐  ┌──────────┐  ┌────────────────┐        │
@@ -39,35 +70,22 @@ The `EditorCore` module is responsible for bridging the gap between the static M
 ### BlockIndex
 - **Header**: `include/mwrender/editor/block_index.hpp`
 - **Responsibilities**: Maintain flat list of markdown blocks with depth, support offset-to-block lookup
-- **Key methods**: `rebuild()`, `blockAtOffset()`, `blockById()`, `affectedRangeForChange()`
-- **Supported blocks**: Document, Heading, Paragraph, BlockQuote, List, ListItem, CodeBlock, ThematicBreak, HtmlBlock, Table, MathBlock, FootnoteDef
 
 ### NodeIdRegistry
 - **Header**: `include/mwrender/editor/node_id_registry.hpp`
-- **Purpose**: Assign stable IDs that survive edits (unlike content-hash-based IDs)
-- **Strategy**: 3-pass matching during `inheritIds()`:
-  1. Exact match by type + contentHash (unchanged nodes keep old ID)
-  2. Type match (modified nodes inherit old ID by position)
-  3. Allocate new ID for inserted nodes
+- **Purpose**: Assign stable IDs that survive edits.
 
 ### EditorProjection
 - **Header**: `include/mwrender/editor/editor_projection.hpp`
 - **Purpose**: Render AST nodes as HTML fragments suitable for editor display
-- **Editability tiers** (via `classifyNode()` and `data-editable` HTML attribute):
-  - `Editable`: Paragraph, Heading, Text, SoftBreak, HardBreak
-  - `SourceEditable`: Strong, Emphasis, Strikethrough, InlineCode, Link, Image, AutoLink, MathInline, FootnoteRef
-  - `Atomic`: CodeBlock, MathBlock, HtmlBlock, Table, FootnoteDef, FrontMatter, Toc
 
 ### SelectionMap
 - **Header**: `include/mwrender/editor/selection_map.hpp`
-- **Purpose**: Bidirectional mapping between visual cursor positions (nodeId + textOffset) and source markdown offsets
-- **Key methods**: `visualToSource()`, `sourceToVisual()`
-- **Offset convention**: Uses UTF-8 byte offsets (frontend must convert from UTF-16 if using native Selection API)
+- **Purpose**: Bidirectional mapping between visual cursor positions and source markdown offsets.
 
 ### RenderPatch
 - **Header**: `include/mwrender/editor/render_patch.hpp`
-- **Fields**: `revision`, `selection`, `removedNodeIds`, `insertedNodes`, `changedNodes`
-- **Purpose**: Describe incremental DOM changes for the frontend to apply
+- **Purpose**: Describe incremental DOM changes for the frontend to apply.
 
 ### EditCommand
 - **Header**: `include/mwrender/editor/edit_command.hpp`
@@ -78,9 +96,9 @@ The `EditorCore` module is responsible for bridging the gap between the static M
   - Structural: SetHeadingLevel, ToggleTask, ToggleList, IndentListItem, OutdentListItem
   - Insertion: InsertLink, InsertImage
 
-## 4. Data Flow (Edit Cycle)
+## 6. Data Flow (Edit Cycle)
 
-```
+```text
 User input (beforeinput / compositionend)
   ↓
 editor.js → EditIntent (JSON)
@@ -108,11 +126,21 @@ QWebChannel → editor.js applyPatchBatch()
   ├── Remove removedNodeIds
   ├── Replace changedNodes
   ├── Insert insertedNodes
-  ├── Re-register IntersectionObserver
   └── Restore selection
 ```
 
-## 5. Boundary with MWRenderQtDemo
+## 7. Testing Strategy
+The EditorCore logic is heavily tested to ensure stability during typing. Tests are located in `tests/editor/`:
+- `document_session_test.cpp`: Tests loading, markdown retrieval, and basic change application.
+- `node_id_registry_test.cpp`: Tests ID stability across edits (e.g., ID reuse, avoiding duplicates).
+- `edit_command_test.cpp`: Exhaustively tests command behaviors (e.g., backspace, enter) and boundary conditions.
+- `unicode_test.cpp`: Ensures UTF-8 character boundaries (CJK, emojis) are respected during deletions.
+- `render_patch_test.cpp`: Verifies the generation of DOM patch instructions.
+- `selection_map_test.cpp`: Tests bidirectional cursor mappings.
+- `incremental_parse_test.cpp`: Tests block-level incremental re-parsing without full AST rebuilds.
+- `editor_benchmark.cpp`: Performance tests for 1MB+ documents.
+
+## 8. Boundary with MWRenderQtDemo
 
 | MarkdownRenderEngine | MWRenderQtDemo |
 |---|---|

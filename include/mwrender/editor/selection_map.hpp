@@ -2,6 +2,8 @@
 
 #include <string>
 #include <cstddef>
+#include <vector>
+#include <mwrender/source.hpp>
 
 namespace mwrender::editor {
 
@@ -21,6 +23,20 @@ struct SourcePositionEx {
     std::size_t offset = 0;
     Affinity affinity = Affinity::After;
     std::string contextNodeId;
+};
+
+enum class ProjectionSegmentKind {
+    Text,
+    Marker,
+    Hidden
+};
+
+struct ProjectionSegment {
+    std::string projectionId;
+    std::string nodeId;
+    SourceRange sourceRange;
+    ProjectionSegmentKind kind = ProjectionSegmentKind::Text;
+    std::string text;
 };
 
 class SelectionMap {

@@ -29,6 +29,8 @@ struct DocumentSessionOptions {
 struct UpdateResult {
     bool ok = false;
     bool fullReparse = false;
+    bool partialReparse = false;
+    SourceRange affectedRange;
     std::string fallbackReason;
     std::size_t revision = 0;
     std::vector<Diagnostic> diagnostics;
@@ -56,6 +58,9 @@ public:
 
     [[nodiscard]] const Node* findNodeById(std::string_view nodeId) const;
     [[nodiscard]] const Node* findNodeAtOffset(std::size_t sourceOffset) const;
+
+    [[nodiscard]] const Engine& engine() const { return engine_; }
+
 
 private:
     void buildNodeMap(const Node& node);
