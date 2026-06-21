@@ -174,9 +174,10 @@ UpdateResult DocumentSession::applyChange(const TextChange& change) {
                           affected.end.offset == allBlocks[0].range.end.offset);
 
         if (!isFullDoc) {
+            std::size_t delta = change.insertedText.size() - (change.to - change.from);
             std::string fragment = markdown_.substr(
                 affected.begin.offset,
-                affected.end.offset - affected.begin.offset);
+                (affected.end.offset + delta) - affected.begin.offset);
 
             auto fragResult = engine_.parseFragment(fragment, phase2NodeType,
                                                      options_.parseOptions);

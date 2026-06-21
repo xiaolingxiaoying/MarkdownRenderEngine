@@ -721,8 +721,10 @@ HtmlRenderResult HtmlRenderer::render(
 
     RendererState state(options, sanitizer);
     state.prePass(document);
-    result.fragment =
-        "<article class=\"mw-document markdown-body\">\n";
+    const bool isFragment = options.outputMode == OutputMode::Fragment;
+    if (!isFragment) {
+        result.fragment = "<article class=\"mw-document markdown-body\">\n";
+    }
     state.renderChildren(document, result.fragment);
 
     if (options.extensions.footnotes && !state.footnoteDefs_.empty()) {
@@ -751,7 +753,9 @@ HtmlRenderResult HtmlRenderer::render(
         result.fragment += "</ol>\n</section>\n";
     }
 
-    result.fragment += "</article>\n";
+    if (!isFragment) {
+        result.fragment += "</article>\n";
+    }
     result.diagnostics = std::move(state.diagnostics);
     result.ok = !state.failed;
     return result;
